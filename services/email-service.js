@@ -47,7 +47,7 @@ class EmailService {
       }
 
       try {
-        this.mainTransporter = nodemailer.createTransport({
+        this.mainTransporter = nodemailer.createTransporter({
           host: this.mainConfig.smtp_host,
           port: this.mainConfig.smtp_port,
           secure: this.mainConfig.smtp_crypto === 'ssl',
@@ -57,7 +57,6 @@ class EmailService {
           },
         });
 
-        await this.mainTransporter.verify();
         console.log(`Main email service for module '${this.currentModule}' initialized successfully`);
         this.useBackup = false;
       } catch (mainError) {
@@ -86,7 +85,7 @@ class EmailService {
             throw new Error('Backup email configuration not found in database');
           }
 
-          this.backupTransporter = nodemailer.createTransport({
+          this.backupTransporter = nodemailer.createTransporter({
             host: this.backupConfig.smtp_host,
             port: this.backupConfig.smtp_port,
             secure: this.backupConfig.smtp_crypto === 'ssl',
@@ -96,7 +95,6 @@ class EmailService {
             },
           });
 
-          await this.backupTransporter.verify();
           console.log(`Backup email service for module '${this.currentModule}' initialized successfully`);
         } catch (backupError) {
           console.error(`Failed to initialize backup email service for module '${this.currentModule}':`, backupError);
@@ -135,45 +133,45 @@ class EmailService {
 
       const subject = emailOptions.subject || '';
       const recipients = typeof emailOptions.to === 'string'
-        ? emailOptions.to
-        : Array.isArray(emailOptions.to)
-          ? emailOptions.to.join(', ')
-          : '';
+          ? emailOptions.to
+          : Array.isArray(emailOptions.to)
+              ? emailOptions.to.join(', ')
+              : '';
       const html = emailOptions.html || '';
       const sender = emailOptions.from || '';
       const cc = typeof emailOptions.cc === 'string'
-        ? emailOptions.cc
-        : Array.isArray(emailOptions.cc)
-          ? emailOptions.cc.join(', ')
-          : '';
+          ? emailOptions.cc
+          : Array.isArray(emailOptions.cc)
+              ? emailOptions.cc.join(', ')
+              : '';
 
       await db.run(
-        `INSERT INTO email_log_queue (
-          timestamp, 
-          service_type, 
-          status, 
-          subject, 
-          recipients, 
-          sender,
-          html_body,
-          message_id, 
-          error_message,
-          cc,
-          module
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          now,
-          serviceType,
-          status,
-          subject,
-          recipients,
-          sender,
-          html,
-          messageId,
-          errorMessage,
-          cc,
-          module
-        ]
+          `INSERT INTO email_log_queue (
+            timestamp,
+            service_type,
+            status,
+            subject,
+            recipients,
+            sender,
+            html_body,
+            message_id,
+            error_message,
+            cc,
+            module
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            now,
+            serviceType,
+            status,
+            subject,
+            recipients,
+            sender,
+            html,
+            messageId,
+            errorMessage,
+            cc,
+            module
+          ]
       );
 
       await db.close();
@@ -197,7 +195,7 @@ class EmailService {
 
     if (!transporter) {
       const error = new Error(`No email service available for module '${moduleForLog}'`);
-      await this.logEmailAttempt(emailOptions, null, error);
+      this.logEmailAttempt(emailOptions, null, error);
       throw error;
     }
 
@@ -218,7 +216,7 @@ class EmailService {
 
       try {
         result = await transporter.sendMail(emailToSend);
-        await this.logEmailAttempt(emailOptions, result);
+        this.logEmailAttempt(emailOptions, result);
 
         return {
           success: true,
@@ -232,10 +230,10 @@ class EmailService {
           console.log(`Main email service for module '${moduleForLog}' failed, switching to backup`);
           this.useBackup = true;
 
-          await this.logEmailAttempt(emailOptions, null, sendError);
+          this.logEmailAttempt(emailOptions, null, sendError);
 
           result = await this.backupTransporter.sendMail(emailToSend);
-          await this.logEmailAttempt(emailOptions, result);
+          this.logEmailAttempt(emailOptions, result);
 
           if (this.serviceConfig.email_notification && this.serviceConfig.admin_email) {
             try {
@@ -247,7 +245,7 @@ class EmailService {
               };
 
               const notifyResult = await this.backupTransporter.sendMail(notificationOptions);
-              await this.logEmailAttempt(notificationOptions, notifyResult);
+              this.logEmailAttempt(notificationOptions, notifyResult);
               console.log(`Failover notification sent to admin for module '${moduleForLog}'`);
             } catch (notifyError) {
               console.error(`Failed to send failover notification for module '${moduleForLog}':`, notifyError);
@@ -263,13 +261,13 @@ class EmailService {
           };
         }
 
-        await this.logEmailAttempt(emailOptions, null, sendError);
+        this.logEmailAttempt(emailOptions, null, sendError);
         throw sendError;
       }
     } catch (error) {
       console.error(`Failed to send email for module '${moduleForLog}':`, error);
       if (!result) {
-        await this.logEmailAttempt(emailOptions, null, error);
+        this.logEmailAttempt(emailOptions, null, error);
       }
       throw error;
     }
@@ -292,7 +290,7 @@ class EmailService {
             };
 
             const result = await this.backupTransporter.sendMail(notificationOptions);
-            await this.logEmailAttempt(notificationOptions, result);
+            this.logEmailAttempt(notificationOptions, result);
             console.log(`Recovery notification sent to admin for module '${this.currentModule}'`);
           } catch (notifyError) {
             console.error(`Failed to send recovery notification for module '${this.currentModule}':`, notifyError);
