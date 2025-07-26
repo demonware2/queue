@@ -85,7 +85,7 @@ class EmailService {
             throw new Error('Backup email configuration not found in database');
           }
 
-          this.backupTransporter = nodemailer.createTransporter({
+          this.backupTransporter = nodemailer.createTransport({
             host: this.backupConfig.smtp_host,
             port: this.backupConfig.smtp_port,
             secure: this.backupConfig.smtp_crypto === 'ssl',
