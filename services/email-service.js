@@ -10,8 +10,8 @@ class EmailService {
     this.backupConfig = null;
     this.serviceConfig = null;
     this.useBackup = false;
-    this.configDbPath = '/var/www/siroum/writable/database/config.sqlite';
-    this.logDbPath = '/var/www/siroum/writable/database/log.sqlite';
+    this.configDbPath = process.env.CONFIG_DB_PATH;
+    this.logDbPath = process.env.LOG_DB_PATH;
     this.currentModule = 'Global';
   }
 
@@ -47,7 +47,7 @@ class EmailService {
       }
 
       try {
-        this.mainTransporter = nodemailer.createTransporter({
+        this.mainTransporter = nodemailer.createTransport({
           host: this.mainConfig.smtp_host,
           port: this.mainConfig.smtp_port,
           secure: this.mainConfig.smtp_crypto === 'ssl',
@@ -133,20 +133,20 @@ class EmailService {
 
       const subject = emailOptions.subject || '';
       const recipients = typeof emailOptions.to === 'string'
-          ? emailOptions.to
-          : Array.isArray(emailOptions.to)
-              ? emailOptions.to.join(', ')
-              : '';
+        ? emailOptions.to
+        : Array.isArray(emailOptions.to)
+          ? emailOptions.to.join(', ')
+          : '';
       const html = emailOptions.html || '';
       const sender = emailOptions.from || '';
       const cc = typeof emailOptions.cc === 'string'
-          ? emailOptions.cc
-          : Array.isArray(emailOptions.cc)
-              ? emailOptions.cc.join(', ')
-              : '';
+        ? emailOptions.cc
+        : Array.isArray(emailOptions.cc)
+          ? emailOptions.cc.join(', ')
+          : '';
 
       await db.run(
-          `INSERT INTO email_log_queue (
+        `INSERT INTO email_log_queue (
             timestamp,
             service_type,
             status,
@@ -159,19 +159,19 @@ class EmailService {
             cc,
             module
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            now,
-            serviceType,
-            status,
-            subject,
-            recipients,
-            sender,
-            html,
-            messageId,
-            errorMessage,
-            cc,
-            module
-          ]
+        [
+          now,
+          serviceType,
+          status,
+          subject,
+          recipients,
+          sender,
+          html,
+          messageId,
+          errorMessage,
+          cc,
+          module
+        ]
       );
 
       await db.close();

@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -332,7 +334,7 @@ class CronjobService {
   async updateTaskStatus(taskId, status, output = '', pid = null) {
     if (!taskId) return;
 
-    const dbPath = path.resolve('/var/www/siroum/writable/database/taskscheduler.sqlite');
+    const dbPath = path.resolve(process.env.TASKSCHEDULER_DB_PATH);
 
     return new Promise((resolve, reject) => {
       const db = new sqlite3.Database(dbPath, (err) => {

@@ -1,14 +1,14 @@
 const config = {
   redis: {
-    host: 'localhost',
-    port: 6379,
-    password: '',
+    host: process.env.REDIS_HOST,
+    port: process.env.REDIS_PORT,
+    password: process.env.REDIS_PASSWORD,
   },
   sqlite: {
-    filename: '/var/www/siroum-extension/queue-system/queue_system.db',
+    filename: process.env.QUEUE_DB_PATH,
   },
   server: {
-    port: 3213,
+    port: process.env.SERVER_PORT,
   },
   jobTypes: {
     EMAIL: 'email',
