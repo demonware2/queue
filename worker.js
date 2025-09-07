@@ -6,6 +6,8 @@ const EmailService = require('./services/email-service');
 const CronjobService = require('./services/cronjob-service');
 const WhatsAppService = require('./services/whatsapp-service');
 const logger = require('./services/logger');
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
 
 const args = minimist(process.argv.slice(2));
 const workerId = args.id;
@@ -25,19 +27,13 @@ let whatsAppService = null;
 let keepRunning = true;
 
 function setupEmailHealthCheck() {
-    if (emailService && emailService.useBackup && !healthCheckInterval) {
+    if (!emailService) return;
+    if (!healthCheckInterval) {
         logger.info(`Worker ${workerId}: Starting periodic email service health checks`);
-
         healthCheckInterval = setInterval(async () => {
             try {
-                logger.debug(`Worker ${workerId}: Checking main email service health...`);
-                const healthy = await emailService.checkServiceHealth();
-
-                if (!emailService.useBackup) {
-                    logger.info(`Worker ${workerId}: Main email service recovered, stopping health checks`);
-                    clearInterval(healthCheckInterval);
-                    healthCheckInterval = null;
-                }
+                logger.debug(`Worker ${workerId}: Checking email service health across modules...`);
+                await emailService.checkServiceHealth();
             } catch (error) {
                 logger.warn(`Worker ${workerId}: Email health check error: ${error.message}`);
             }
@@ -275,8 +271,43 @@ async function main() {
                 throw new Error('Failed to initialize email service');
             }
 
-            if (emailService.useBackup) {
-                setupEmailHealthCheck();
+            setupEmailHealthCheck();
+
+            try {
+                const db = await open({
+                    filename: process.env.CONFIG_DB_PATH,
+                    driver: sqlite3.Database,
+                });
+
+                const rows = await db.all("SELECT DISTINCT module FROM email_configuration WHERE module IS NOT NULL");
+                const modules = rows
+                    .map(r => r.module)
+                    .filter(m => m && m !== 'Global');
+
+                if (modules.length) {
+                    logger.info(`Worker ${workerId}: Warming up email modules: ${modules.join(', ')}`);
+                }
+
+                for (const mod of modules) {
+                    try {
+                        const ok = await emailService.init(mod);
+                        if (!ok) {
+                            logger.warn(`Worker ${workerId}: Email module '${mod}' failed to initialize during warmup`);
+                        }
+                    } catch (e) {
+                        logger.warn(`Worker ${workerId}: Error warming up email module '${mod}': ${e.message}`);
+                    }
+                }
+
+                try {
+                    await emailService.init('Global');
+                } catch (e) {
+                    logger.warn(`Worker ${workerId}: Failed to initialize Global during warmup: ${e.message}`);
+                }
+
+                await db.close();
+            } catch (warmErr) {
+                logger.warn(`Worker ${workerId}: Email warmup skipped due to error: ${warmErr.message}`);
             }
         }
 
