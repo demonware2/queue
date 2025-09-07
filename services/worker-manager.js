@@ -6,6 +6,9 @@ class WorkerManager {
     this.db = db;
     this.workerModel = workerModel;
     this.workers = {};
+    // Track restart backoff per worker ID
+    this.restartState = {};
+    this.restartTimers = {};
   }
 
   async init() {
@@ -17,6 +20,12 @@ class WorkerManager {
   }
 
   async startWorker(id, type) {
+    // If a restart was scheduled, cancel it because we're starting now
+    if (this.restartTimers[id]) {
+      clearTimeout(this.restartTimers[id]);
+      delete this.restartTimers[id];
+    }
+
     const workerProcess = spawn('node', [
       path.join(__dirname, '../worker.js'),
       '--id', id,
@@ -29,7 +38,8 @@ class WorkerManager {
     this.workers[id] = {
       process: workerProcess,
       type,
-      id
+      id,
+      startedAt: Date.now(),
     };
 
     workerProcess.stdout.on('data', (data) => {
@@ -41,12 +51,17 @@ class WorkerManager {
     });
 
     workerProcess.on('exit', async (code) => {
+      const record = this.workers[id];
+      const runtimeMs = record && record.startedAt ? (Date.now() - record.startedAt) : 0;
       console.log(`Worker ${id} (${type}) exited with code ${code}`);
       delete this.workers[id];
-      
+
       if (code !== 0) {
-        console.log(`Restarting worker ${id} (${type})...`);
-        await this.startWorker(id, type);
+        // Schedule a restart with exponential backoff per worker
+        this.scheduleRestart(id, type, runtimeMs);
+      } else {
+        // Clean successful state
+        delete this.restartState[id];
       }
     });
 
@@ -63,6 +78,10 @@ class WorkerManager {
     if (this.workers[id]) {
       this.workers[id].process.kill();
       delete this.workers[id];
+      if (this.restartTimers[id]) {
+        clearTimeout(this.restartTimers[id]);
+        delete this.restartTimers[id];
+      }
       return true;
     }
     return false;
@@ -88,6 +107,37 @@ class WorkerManager {
     for (const id of workerIds) {
       await this.stopWorker(id);
     }
+  }
+
+  scheduleRestart(id, type, lastRuntimeMs = 0) {
+    const resetThresholdMs = 60_000; // reset backoff if the worker lived > 60s
+    let state = this.restartState[id] || { failures: 0, delayMs: 1000 };
+
+    if (lastRuntimeMs > resetThresholdMs) {
+      state = { failures: 0, delayMs: 1000 };
+    }
+
+    state.failures += 1;
+    // Exponential backoff with cap at 30s
+    state.delayMs = Math.min(state.failures === 1 ? 1000 : state.delayMs * 2, 30_000);
+    this.restartState[id] = state;
+
+    const delay = state.delayMs;
+    console.log(`Restarting worker ${id} (${type}) in ${delay}ms (failures=${state.failures})...`);
+
+    if (this.restartTimers[id]) {
+      clearTimeout(this.restartTimers[id]);
+    }
+
+    this.restartTimers[id] = setTimeout(async () => {
+      try {
+        await this.startWorker(id, type);
+      } catch (e) {
+        console.error(`Failed to restart worker ${id} (${type}): ${e.message}`);
+        // Schedule another attempt
+        this.scheduleRestart(id, type, 0);
+      }
+    }, delay);
   }
 }
 

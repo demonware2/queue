@@ -13,14 +13,30 @@ class QueueService {
     await this.subscriber.subscribe('worker:job-complete', 'worker:job-failed');
     
     this.subscriber.on('message', (channel, message) => {
-      const data = JSON.parse(message);
-      
-      if (channel === 'worker:job-complete' && this.handlers.onJobComplete) {
-        this.handlers.onJobComplete(data);
+      let data;
+      try {
+        data = JSON.parse(message);
+      } catch (e) {
+        console.warn(`QueueService: failed to parse message on ${channel}: ${e.message}`);
+        return;
       }
-      
+
+      if (channel === 'worker:job-complete' && this.handlers.onJobComplete) {
+        try {
+          const p = this.handlers.onJobComplete(data);
+          if (p && typeof p.then === 'function') p.catch(err => console.error('onJobComplete handler error:', err));
+        } catch (err) {
+          console.error('onJobComplete handler threw:', err);
+        }
+      }
+
       if (channel === 'worker:job-failed' && this.handlers.onJobFailed) {
-        this.handlers.onJobFailed(data);
+        try {
+          const p = this.handlers.onJobFailed(data);
+          if (p && typeof p.then === 'function') p.catch(err => console.error('onJobFailed handler error:', err));
+        } catch (err) {
+          console.error('onJobFailed handler threw:', err);
+        }
       }
     });
   }
@@ -43,7 +59,13 @@ class QueueService {
 
   async getNextJob(type) {
     const jobData = await this.redis.rpop(`jobs:${type}`);
-    return jobData ? JSON.parse(jobData) : null;
+    if (!jobData) return null;
+    try {
+      return JSON.parse(jobData);
+    } catch (e) {
+      console.warn(`QueueService: failed to parse job data for type ${type}: ${e.message}`);
+      return null;
+    }
   }
 
   async jobComplete(jobId, workerId, result) {

@@ -25,6 +25,11 @@ const config = {
   }
 };
 
+function sleepWithJitter(baseMs, jitterMs = 250) {
+  const extra = Math.floor(Math.random() * jitterMs);
+  return new Promise(resolve => setTimeout(resolve, baseMs + extra));
+}
+
 // Set up logger with file logging
 const logToConsole = (message, type = 'info') => {
   const timestamp = new Date().toISOString();
@@ -278,7 +283,7 @@ async function updateTenderPengumuman(tahuns, scriptSha, maxRetries = 5, retryIn
           
           if (!result) {
             logToConsole("Failed to fetch data from API!", 'error');
-            await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+            await sleepWithJitter(retryInterval * 1000);
             continue;
           }
           
@@ -341,11 +346,11 @@ async function updateTenderPengumuman(tahuns, scriptSha, maxRetries = 5, retryIn
           }
         } else {
           logToConsole("Rate limit hit, retrying...", 'warning');
-          await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+          await sleepWithJitter(retryInterval * 1000);
         }
       } catch (error) {
         logToConsole(`Error in update process: ${error.message}`, 'error');
-        await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+        await sleepWithJitter(retryInterval * 1000);
       }
     }
     
@@ -669,7 +674,7 @@ async function updateTenderSelesai(tahuns, scriptSha, maxRetries = 5, retryInter
           
           if (!result) {
             logToConsole("Failed to fetch data from API!", 'error');
-            await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+            await sleepWithJitter(retryInterval * 1000);
             continue;
           }
           
@@ -733,11 +738,11 @@ async function updateTenderSelesai(tahuns, scriptSha, maxRetries = 5, retryInter
           }
         } else {
           logToConsole("Rate limit hit, retrying...", 'warning');
-          await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+          await sleepWithJitter(retryInterval * 1000);
         }
       } catch (error) {
         logToConsole(`Error in update process: ${error.message}`, 'error');
-        await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+        await sleepWithJitter(retryInterval * 1000);
       }
     }
     
@@ -765,7 +770,7 @@ async function updateTenderNilai(tahun, scriptSha, maxRetries = 5, retryInterval
         
         if (!result) {
           logToConsole("Failed to fetch Tender Nilai data from API!", 'error');
-          await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+          await sleepWithJitter(retryInterval * 1000);
           continue;
         }
         
@@ -816,7 +821,7 @@ async function updateTenderNilai(tahun, scriptSha, maxRetries = 5, retryInterval
       }
     } catch (error) {
       logToConsole(`Error in update process: ${error.message}`, 'error');
-      await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+      await sleepWithJitter(retryInterval * 1000);
     }
   }
   

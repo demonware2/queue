@@ -32,6 +32,11 @@ const config = {
   }
 };
 
+function sleepWithJitter(baseMs, jitterMs = 250) {
+  const extra = Math.floor(Math.random() * jitterMs);
+  return new Promise(resolve => setTimeout(resolve, baseMs + extra));
+}
+
 // Set up logger with file logging
 const logToConsole = (message, type = 'info') => {
   const timestamp = new Date().toISOString();
@@ -208,10 +213,10 @@ async function getAccessToken(url, data, maxRetries, retryInterval, scriptSha) {
       }
       
       // Sleep before retry
-      await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+      await sleepWithJitter(retryInterval * 1000);
     } catch (error) {
       logToConsole(`Error getting access token: ${error.message}`, 'error');
-      await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+      await sleepWithJitter(retryInterval * 1000);
     }
   }
 
@@ -602,12 +607,12 @@ async function update() {
               
               break;  // Exit retry loop on success
             } else {
-              await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+              await sleepWithJitter(retryInterval * 1000);
             }
           } catch (error) {
             logToConsole(`Error processing ${urlApi}: ${error.message}`, 'error');
             allOutput += `Error processing ${urlApi}: ${error.message}\n`;
-            await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+            await sleepWithJitter(retryInterval * 1000);
           }
         }
 

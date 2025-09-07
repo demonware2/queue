@@ -22,6 +22,11 @@ const config = {
   }
 };
 
+function sleepWithJitter(baseMs, jitterMs = 250) {
+  const extra = Math.floor(Math.random() * jitterMs);
+  return new Promise(resolve => setTimeout(resolve, baseMs + extra));
+}
+
 const logToConsole = (message, type = 'info') => {
   const timestamp = new Date().toISOString();
   const colorCodes = {
@@ -350,7 +355,7 @@ async function update() {
             
             if (!result) {
               logToConsole("Failed to fetch data from API!", 'error');
-              await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+              await sleepWithJitter(retryInterval * 1000);
               continue;
             }
             
@@ -411,11 +416,11 @@ async function update() {
             }
           } else {
             logToConsole("Rate limit hit, retrying...", 'warning');
-            await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+            await sleepWithJitter(retryInterval * 1000);
           }
         } catch (error) {
           logToConsole(`Error in update process: ${error.message}`, 'error');
-          await new Promise(resolve => setTimeout(resolve, retryInterval * 1000));
+          await sleepWithJitter(retryInterval * 1000);
         }
       }
       

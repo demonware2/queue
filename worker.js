@@ -26,6 +26,45 @@ let healthCheckInterval = null;
 let whatsAppService = null;
 let keepRunning = true;
 
+function safeStringify(value, opts = {}) {
+    const { maxDepth = 5, maxChars = 20000 } = opts;
+    const seen = new WeakSet();
+
+    function helper(val, depth) {
+        if (depth > maxDepth) return '[MaxDepth]';
+        if (val === null) return null;
+        const t = typeof val;
+        if (t === 'string' || t === 'number' || t === 'boolean') return val;
+        if (t === 'bigint') return String(val);
+        if (t === 'undefined' || t === 'function' || t === 'symbol') return `[${t}]`;
+        if (t === 'object') {
+            if (seen.has(val)) return '[Circular]';
+            seen.add(val);
+            if (Array.isArray(val)) return val.map(v => {
+                try { return helper(v, depth + 1); } catch (e) { return `[Error: ${e.message}]`; }
+            });
+            const out = {};
+            for (const k of Object.keys(val)) {
+                try {
+                    out[k] = helper(val[k], depth + 1);
+                } catch (e) {
+                    out[k] = `[Error: ${e.message}]`;
+                }
+            }
+            return out;
+        }
+        return val;
+    }
+
+    try {
+        let s = JSON.stringify(helper(value, 0));
+        if (s.length > maxChars) s = s.slice(0, maxChars) + '...';
+        return s;
+    } catch (e) {
+        try { return String(value); } catch (_) { return '[Unserializable]'; }
+    }
+}
+
 function setupEmailHealthCheck() {
     if (!emailService) return;
     if (!healthCheckInterval) {
@@ -60,7 +99,7 @@ const API_ENDPOINTS = {
 
 async function processJob(job, preclaimed = false) {
     logger.debug(`Worker ${workerId} starting to process job ${job.id} of type ${job.type}`);
-    logger.debug(`Job payload: ${JSON.stringify(job.payload)}`);
+    logger.debug(`Job payload: ${safeStringify(job.payload)}`);
 
     try {
         logger.info(`Worker ${workerId} processing job ${job.id} of type ${job.type}`);
@@ -96,7 +135,7 @@ async function processJob(job, preclaimed = false) {
             logger.info(`Starting cronjob execution for script: ${job.payload.script}`);
             try {
                 result = await cronjobService.runScript(job.payload);
-                logger.debug(`Cronjob execution completed with result: ${JSON.stringify(result)}`);
+                logger.debug(`Cronjob execution completed with result: ${safeStringify(result)}`);
 
                 if (job.payload && job.payload.taskId) {
                     const taskId = job.payload.taskId;
