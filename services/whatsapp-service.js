@@ -33,7 +33,7 @@ class WhatsAppService {
         return false;
       }
 
-      if (response.data && (response.data.ready || response.data.connecting)) {
+      if (response.data && response.data.ready) {
         console.log(`[${targetUrl}] WhatsApp service initialized successfully`);
         this.initialized.set(targetUrl, true);
         return true;
@@ -70,12 +70,7 @@ class WhatsAppService {
     const baseUrl = payload.baseUrl || this.defaultBaseUrl;
 
     try {
-      if (!this.initialized.get(baseUrl)) {
-        await this.init(baseUrl);
-        if (!this.initialized.get(baseUrl)) {
-          throw new Error(`WhatsApp service is not initialized at ${baseUrl}`);
-        }
-      }
+      await this.waitUntilReady(baseUrl, 45000, 1500);
 
       if (!payload.number || !payload.message) {
         throw new Error('Number and message are required for WhatsApp message');
@@ -87,7 +82,7 @@ class WhatsAppService {
 
       await new Promise(resolve => setTimeout(resolve, delayMs));
 
-      const response = await axios.post(`${baseUrl}/send-message`, {
+      let response = await axios.post(`${baseUrl}/send-message`, {
         number: payload.number,
         message: payload.message
       }, {
@@ -111,8 +106,34 @@ class WhatsAppService {
         throw new Error(response.data?.error || 'Failed to send WhatsApp message');
       }
     } catch (error) {
-      console.error(`[${baseUrl}] WhatsApp message to ${payload.number} failed:`, error.message);
+      const status = error.response?.status;
+      if (status === 503) {
+        console.warn(`[${baseUrl}] Not ready (503). Waiting and retrying send to ${payload.number}...`);
+        await this.waitUntilReady(baseUrl, 30000, 1500);
+        try {
+          const retryResp = await axios.post(`${baseUrl}/send-message`, {
+            number: payload.number,
+            message: payload.message
+          }, { timeout: 30000 });
+          if (retryResp.data?.success) {
+            const sentTime = new Date().toLocaleTimeString();
+            console.log(`[${baseUrl}] ✅ Message sent on retry to ${payload.number} at ${sentTime}`);
+            return {
+              success: true,
+              messageId: Date.now().toString(),
+              response: retryResp.data,
+              baseUrl,
+              sentAt: sentTime,
+              delayUsed: delayMs,
+              method: 'primary-retry'
+            };
+          }
+        } catch (e2) {
+          console.warn(`[${baseUrl}] Retry failed for ${payload.number}: ${e2.message}`);
+        }
+      }
 
+      console.error(`[${baseUrl}] WhatsApp message to ${payload.number} failed:`, error.message);
       console.log(`[BACKUP] Trying Wablas for ${payload.number}`);
       return await this._sendViaWablas(payload.number, payload.message, false);
     }
@@ -134,12 +155,7 @@ class WhatsAppService {
     const baseUrl = payload.baseUrl || this.defaultBaseUrl;
 
     try {
-      if (!this.initialized.get(baseUrl)) {
-        await this.init(baseUrl);
-        if (!this.initialized.get(baseUrl)) {
-          throw new Error(`WhatsApp service is not initialized at ${baseUrl}`);
-        }
-      }
+      await this.waitUntilReady(baseUrl, 45000, 1500);
 
       if (!payload.groupId || !payload.message) {
         throw new Error('Group ID and message are required for WhatsApp group message');
@@ -151,7 +167,7 @@ class WhatsAppService {
 
       await new Promise(resolve => setTimeout(resolve, delayMs));
 
-      const response = await axios.post(`${baseUrl}/send-group-message`, {
+      let response = await axios.post(`${baseUrl}/send-group-message`, {
         groupId: payload.groupId,
         message: payload.message
       }, {
@@ -175,11 +191,60 @@ class WhatsAppService {
         throw new Error(response.data?.error || 'Failed to send WhatsApp group message');
       }
     } catch (error) {
-      console.error(`[${baseUrl}] WhatsApp group message to ${payload.groupId} failed:`, error.message);
+      const status = error.response?.status;
+      if (status === 503) {
+        console.warn(`[${baseUrl}] Not ready (503). Waiting and retrying group send to ${payload.groupId}...`);
+        await this.waitUntilReady(baseUrl, 30000, 1500);
+        try {
+          const retryResp = await axios.post(`${baseUrl}/send-group-message`, {
+            groupId: payload.groupId,
+            message: payload.message
+          }, { timeout: 30000 });
+          if (retryResp.data?.success) {
+            const sentTime = new Date().toLocaleTimeString();
+            console.log(`[${baseUrl}] ✅ Group message sent on retry to ${payload.groupId} at ${sentTime}`);
+            return {
+              success: true,
+              messageId: Date.now().toString(),
+              response: retryResp.data,
+              baseUrl,
+              sentAt: sentTime,
+              delayUsed: delayMs,
+              method: 'primary-retry'
+            };
+          }
+        } catch (e2) {
+          console.warn(`[${baseUrl}] Retry failed for group ${payload.groupId}: ${e2.message}`);
+        }
+      }
 
+      console.error(`[${baseUrl}] WhatsApp group message to ${payload.groupId} failed:`, error.message);
       console.log(`[BACKUP] Trying Wablas for group ${payload.groupId}`);
       return await this._sendViaWablas(payload.groupId, payload.message, true);
     }
+  }
+
+  async waitUntilReady(baseUrl, timeoutMs = 30000, intervalMs = 1000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const response = await axios.get(`${baseUrl}/status`, { timeout: 5000, validateStatus: null });
+        if (response.status === 200 && response.data?.ready) {
+          if (!this.initialized.get(baseUrl)) this.initialized.set(baseUrl, true);
+          return true;
+        }
+      } catch (e) {
+        // ignore and retry
+      }
+      await new Promise(r => setTimeout(r, intervalMs));
+    }
+
+    const resp = await axios.get(`${baseUrl}/status`, { timeout: 5000, validateStatus: null });
+    if (resp.status === 200 && resp.data?.ready) {
+      if (!this.initialized.get(baseUrl)) this.initialized.set(baseUrl, true);
+      return true;
+    }
+    throw new Error(`WhatsApp service not ready at ${baseUrl} after ${timeoutMs}ms`);
   }
 
   async _sendViaWablas(target, message, isGroup = false) {
