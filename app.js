@@ -127,16 +127,23 @@ async function startServer() {
             const normalizedRetryDelay = normalizeInteger(rawRetryDelay);
             const normalizedRetryCount = normalizeInteger(rawRetryCount);
 
-            const retryOptions = {};
-            if (normalizedRetryEnabled !== undefined) {
-                retryOptions.isRetryEnabled = normalizedRetryEnabled;
+            if (rawRetryEnabled !== undefined || rawRetryDelay !== undefined || rawRetryCount !== undefined) {
+                console.log('Job retry config (raw):', {
+                    rawRetryEnabled,
+                    rawRetryDelay,
+                    rawRetryCount
+                });
             }
-            if (normalizedRetryDelay !== undefined) {
-                retryOptions.retryDelay = normalizedRetryDelay;
-            }
-            if (normalizedRetryCount !== undefined) {
-                retryOptions.retryCount = normalizedRetryCount;
-            }
+
+            const resolvedRetryEnabled = normalizedRetryEnabled ?? false;
+            const resolvedRetryDelay = normalizedRetryDelay ?? 1;
+            const resolvedRetryCount = normalizedRetryCount ?? 5;
+
+            const retryOptions = {
+                isRetryEnabled: resolvedRetryEnabled,
+                retryDelay: resolvedRetryDelay,
+                retryCount: resolvedRetryCount
+            };
 
             const jobPayload = { ...payload };
             if (payload.retryOptions && typeof payload.retryOptions === 'object' && !Array.isArray(payload.retryOptions)) {
@@ -179,11 +186,9 @@ async function startServer() {
 
             await queueService.addJob(jobId, type, jobPayload);
 
-            const logRetryEnabled = normalizedRetryEnabled ?? false;
-            const logRetryDelay = normalizedRetryDelay ?? 1;
-            const logRetryCount = normalizedRetryCount ?? 5;
+            console.log('Job retry config (resolved):', retryOptions);
 
-            console.log(`Job created with ID: ${jobId}, Type: ${type}, RetryEnabled: ${logRetryEnabled}, RetryDelay: ${logRetryDelay}h, RetryCount: ${logRetryCount}`);
+            console.log(`Job created with ID: ${jobId}, Type: ${type}, RetryEnabled: ${retryOptions.isRetryEnabled}, RetryDelay: ${retryOptions.retryDelay}h, RetryCount: ${retryOptions.retryCount}`);
 
             res.status(201).json({ jobId });
         } catch (error) {
