@@ -67,6 +67,7 @@ class WhatsAppService {
   }
 
   async _sendMessageInternal(payload) {
+    console.log("Entering _sendMessageInternal");
     const baseUrl = payload.baseUrl || this.defaultBaseUrl;
 
     try {
@@ -228,12 +229,16 @@ class WhatsAppService {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       try {
+        console.log(`[${baseUrl}] Checking status...`);
         const response = await axios.get(`${baseUrl}/status`, { timeout: 5000, validateStatus: null });
         if (response.status === 200 && response.data?.ready) {
           if (!this.initialized.get(baseUrl)) this.initialized.set(baseUrl, true);
+          console.log(`[${baseUrl}] Status is ready.`);
           return true;
         }
+        console.log(`[${baseUrl}] Status not ready, status: ${response.status}`);
       } catch (e) {
+        console.error(`[${baseUrl}] Error in waitUntilReady: ${e.message}`);
         // ignore and retry
       }
       await new Promise(r => setTimeout(r, intervalMs));
