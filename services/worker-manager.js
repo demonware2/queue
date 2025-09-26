@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const config = require('../config');
 
 class WorkerManager {
   constructor(db, workerModel) {
@@ -13,23 +14,30 @@ class WorkerManager {
 
   async init() {
     const dbWorkers = await this.workerModel.getAll();
-    
+
     for (const worker of dbWorkers) {
       await this.startWorker(worker.id, worker.type);
+    }
+
+    const retryWorkers = dbWorkers.filter(w => w.type === config.jobTypes.RETRY);
+    if (retryWorkers.length === 0) {
+        console.log('No retry worker found, creating one...');
+        await this.createWorker(config.jobTypes.RETRY);
     }
   }
 
   async startWorker(id, type) {
-    // If a restart was scheduled, cancel it because we're starting now
     if (this.restartTimers[id]) {
       clearTimeout(this.restartTimers[id]);
       delete this.restartTimers[id];
     }
 
+    const workerScript = type === config.jobTypes.RETRY ? '../retry-worker.js' : '../worker.js';
+    const workerArgs = type === config.jobTypes.RETRY ? [] : ['--id', id, '--type', type];
+
     const workerProcess = spawn('node', [
-      path.join(__dirname, '../worker.js'),
-      '--id', id,
-      '--type', type
+      path.join(__dirname, workerScript),
+      ...workerArgs
     ], {
       stdio: 'pipe',
       detached: false
@@ -57,10 +65,8 @@ class WorkerManager {
       delete this.workers[id];
 
       if (code !== 0) {
-        // Schedule a restart with exponential backoff per worker
         this.scheduleRestart(id, type, runtimeMs);
       } else {
-        // Clean successful state
         delete this.restartState[id];
       }
     });
@@ -110,7 +116,7 @@ class WorkerManager {
   }
 
   scheduleRestart(id, type, lastRuntimeMs = 0) {
-    const resetThresholdMs = 60_000; // reset backoff if the worker lived > 60s
+    const resetThresholdMs = 60_000;
     let state = this.restartState[id] || { failures: 0, delayMs: 1000 };
 
     if (lastRuntimeMs > resetThresholdMs) {
@@ -118,7 +124,6 @@ class WorkerManager {
     }
 
     state.failures += 1;
-    // Exponential backoff with cap at 30s
     state.delayMs = Math.min(state.failures === 1 ? 1000 : state.delayMs * 2, 30_000);
     this.restartState[id] = state;
 
@@ -134,7 +139,6 @@ class WorkerManager {
         await this.startWorker(id, type);
       } catch (e) {
         console.error(`Failed to restart worker ${id} (${type}): ${e.message}`);
-        // Schedule another attempt
         this.scheduleRestart(id, type, 0);
       }
     }, delay);

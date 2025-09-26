@@ -23,25 +23,18 @@ async function startServer() {
         onJobComplete: async (data) => {
             await jobModel.updateStatus(data.jobId, 'completed', data.workerId, data.result);
             await workerModel.updateStatus(data.workerId, 'idle');
+            console.log(`Job ${data.jobId} completed by worker ${data.workerId}`);
         },
         onJobFailed: async (data) => {
-            try {
-                const job = await jobModel.getById(data.jobId);
-                const currentAttempts = job && typeof job.attempts === 'number' ? job.attempts : 0;
-                const nextAttempts = currentAttempts + 1;
-
-                if (nextAttempts <= 3) {
-                    const nextAttemptAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-                    await jobModel.updateRetrySchedule(data.jobId, nextAttempts, nextAttemptAt);
-                } else {
-                    await jobModel.updateStatus(data.jobId, 'failed', data.workerId, { error: data.error, attempts: nextAttempts });
-                }
-            } catch (e) {
-                console.error('Error handling job failure with retry:', e);
-                await jobModel.updateStatus(data.jobId, 'failed', data.workerId, { error: data.error });
-            } finally {
-                await workerModel.updateStatus(data.workerId, 'idle');
+            await jobModel.updateStatus(data.jobId, 'failed', data.workerId, { error: data.error });
+            const job = await jobModel.getById(data.jobId);
+            if (job && job.is_retry_enabled && job.attempts < job.retry_count) {
+                const nextAttemptTimestamp = new Date(job.next_attempt_at).getTime();
+                await queueService.redis.zadd('queue:retries', nextAttemptTimestamp, job.id);
+                await queueService.redis.lpush('queue:retry_signal', '1');
             }
+            await workerModel.updateStatus(data.workerId, 'idle');
+            console.log(`Job ${data.jobId} failed on worker ${data.workerId}. Error: ${data.error}`);
         }
     });
 
@@ -60,6 +53,7 @@ async function startServer() {
     app.post('/api/jobs', async (req, res) => {
         try {
             const { type, payload } = req.body;
+            const { isRetryEnabled, retryDelay, retryCount } = payload;
 
             if (!type || !payload) {
                 return res.status(400).json({ error: 'Type and payload are required' });
@@ -76,9 +70,11 @@ async function startServer() {
                 return res.status(400).json({ error: `Invalid job type. Must be one of: ${Object.values(config.jobTypes).join(', ')}` });
             }
 
-            const jobId = await jobModel.create(type, payload);
+            const jobId = await jobModel.create(type, payload, { isRetryEnabled, retryDelay, retryCount });
 
             await queueService.addJob(jobId, type, payload);
+
+            console.log(`Job created with ID: ${jobId}, Type: ${type}, RetryEnabled: ${isRetryEnabled}, RetryDelay: ${retryDelay}h, RetryCount: ${retryCount}`);
 
             res.status(201).json({ jobId });
         } catch (error) {
@@ -108,7 +104,6 @@ async function startServer() {
         }
     });
 
-    //function to update a job by id
     app.patch('/api/jobs/:id', async (req, res) => {
         try {
             const { status, workerId, result } = req.body;
@@ -122,7 +117,6 @@ async function startServer() {
         }
     });
 
-    // atomically claim a specific job if it's still pending
     app.post('/api/jobs/:id/claim', async (req, res) => {
         try {
             const { id } = req.params;
@@ -134,7 +128,6 @@ async function startServer() {
         }
     });
 
-    //function to get the next job by type
     app.get('/api/jobs/next/:type', async (req, res) => {
         try {
             const job = await jobModel.getNextPending(req.params.type);
@@ -152,7 +145,6 @@ async function startServer() {
         }
     });
 
-    // function to create a new worker
     app.post('/api/workers', async (req, res) => {
         try {
             const { type } = req.body;
@@ -174,7 +166,6 @@ async function startServer() {
         }
     });
 
-    // function to get a worker by id
     app.delete('/api/workers/:id', async (req, res) => {
         try {
             const success = await workerManager.stopWorker(req.params.id);
@@ -190,7 +181,6 @@ async function startServer() {
         }
     });
 
-    // function to update a worker by id
     app.patch('/api/workers/:id', async (req, res) => {
         try {
             const { status } = req.body;
@@ -204,7 +194,6 @@ async function startServer() {
         }
     });
 
-    // function to scale workers
     app.post('/api/workers/scale', async (req, res) => {
         try {
             const { type, count } = req.body;
@@ -230,7 +219,6 @@ async function startServer() {
         }
     });
 
-    // function to get stats
     app.get('/api/stats', async (req, res) => {
         try {
             const jobStats = await jobModel.getStats();
@@ -246,7 +234,6 @@ async function startServer() {
         }
     });
 
-    // function to get a worker by id
     app.get('/api/workers/:id', async (req, res) => {
         try {
             const worker = await db.get('SELECT * FROM workers WHERE id = ?', [req.params.id]);

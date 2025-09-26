@@ -38,6 +38,7 @@ async function initDatabase() {
         CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs (type);
         CREATE INDEX IF NOT EXISTS idx_workers_type ON workers (type);
         CREATE INDEX IF NOT EXISTS idx_workers_status ON workers (status);
+        CREATE INDEX IF NOT EXISTS idx_jobs_retry_sync ON jobs (status, is_retry_enabled, next_attempt_at);
     `);
 
     try {
@@ -49,7 +50,16 @@ async function initDatabase() {
         if (!colNames.includes('next_attempt_at')) {
             await db.exec(`ALTER TABLE jobs ADD COLUMN next_attempt_at DATETIME`);
         }
-        // create index after column ensured
+        if (!colNames.includes('is_retry_enabled')) {
+            await db.exec(`ALTER TABLE jobs ADD COLUMN is_retry_enabled BOOLEAN DEFAULT 0`);
+        }
+        if (!colNames.includes('retry_delay')) {
+            await db.exec(`ALTER TABLE jobs ADD COLUMN retry_delay INTEGER DEFAULT 1`);
+        }
+        if (!colNames.includes('retry_count')) {
+            await db.exec(`ALTER TABLE jobs ADD COLUMN retry_count INTEGER DEFAULT 5`);
+        }
+
         await db.exec(`CREATE INDEX IF NOT EXISTS idx_jobs_next_attempt ON jobs (next_attempt_at)`);
     } catch (e) {
         console.error('Migration check failed:', e);

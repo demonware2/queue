@@ -16,6 +16,7 @@ const config = {
     SMS: 'sms',
     NOTIFICATION: 'notification',
     CRONJOB: 'cronjob',
+    RETRY: 'retry',
   },
   workerSettings: {
     defaultCount: 1,

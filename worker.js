@@ -240,6 +240,17 @@ async function processJob(job, preclaimed = false) {
         }
 
         try {
+            await axios.patch(`http://localhost:${config.server.port}/api/jobs/${job.id}`,
+                {
+                    status: 'failed',
+                    error: error.message
+                });
+            logger.debug(`Job ${job.id} marked as failed`);
+        } catch (failError) {
+            logger.warn(`Error marking job as failed: ${failError.message}`);
+        }
+
+        try {
             await redis.publish('worker:job-failed', JSON.stringify({
                 jobId: job.id,
                 workerId,
@@ -249,8 +260,6 @@ async function processJob(job, preclaimed = false) {
         } catch (pubError) {
             logger.warn(`Error publishing job failure: ${pubError.message}`);
         }
-
-        throw error;
     }
 }
 
