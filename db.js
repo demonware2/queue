@@ -12,33 +12,36 @@ async function initDatabase() {
 
     await db.exec(`
         CREATE TABLE IF NOT EXISTS workers (
-                                               id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                               type TEXT NOT NULL,
-                                               status TEXT NOT NULL,
-                                               last_active DATETIME,
-                                               created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                                               updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            last_active DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS jobs (
-                                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                            type TEXT NOT NULL,
-                                            payload TEXT NOT NULL,
-                                            status TEXT NOT NULL,
-                                            worker_id INTEGER,
-                                            result TEXT,
-                                            attempts INTEGER DEFAULT 0,
-                                            next_attempt_at DATETIME,
-                                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                                            FOREIGN KEY (worker_id) REFERENCES workers (id)
-            );
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            status TEXT NOT NULL,
+            worker_id INTEGER,
+            result TEXT,
+            attempts INTEGER DEFAULT 0,
+            next_attempt_at DATETIME,
+            is_retry_enabled BOOLEAN DEFAULT 0,
+            retry_delay INTEGER DEFAULT 1,
+            retry_count INTEGER DEFAULT 5,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (worker_id) REFERENCES workers (id)
+        );
 
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
         CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs (type);
         CREATE INDEX IF NOT EXISTS idx_workers_type ON workers (type);
         CREATE INDEX IF NOT EXISTS idx_workers_status ON workers (status);
-        CREATE INDEX IF NOT EXISTS idx_jobs_retry_sync ON jobs (status, is_retry_enabled, next_attempt_at);
     `);
 
     try {
@@ -61,8 +64,19 @@ async function initDatabase() {
         }
 
         await db.exec(`CREATE INDEX IF NOT EXISTS idx_jobs_next_attempt ON jobs (next_attempt_at)`);
+        await db.exec(`CREATE INDEX IF NOT EXISTS idx_jobs_retry_sync ON jobs (status, is_retry_enabled, next_attempt_at)`);
     } catch (e) {
         console.error('Migration check failed:', e);
+    }
+
+    try {
+        const workerColumns = await db.all("PRAGMA table_info('workers')");
+        const workerColNames = workerColumns.map(c => c.name);
+        if (!workerColNames.includes('is_active')) {
+            await db.exec(`ALTER TABLE workers ADD COLUMN is_active INTEGER DEFAULT 1`);
+        }
+    } catch (e) {
+        console.error('Worker migration check failed:', e);
     }
 
     return db;

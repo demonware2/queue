@@ -106,9 +106,15 @@ async function startServer() {
 
     app.patch('/api/jobs/:id', async (req, res) => {
         try {
-            const { status, workerId, result } = req.body;
+            const { status, workerId, result, error, manageRetry } = req.body;
 
-            await jobModel.updateStatus(req.params.id, status, workerId, result);
+            const resultPayload = result !== undefined ? result : (error ? { error } : null);
+            const options = {};
+            if (typeof manageRetry === 'boolean') {
+                options.manageRetry = manageRetry;
+            }
+
+            await jobModel.updateStatus(req.params.id, status, workerId, resultPayload, options);
 
             res.json({ success: true });
         } catch (error) {

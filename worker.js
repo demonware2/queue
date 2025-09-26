@@ -243,7 +243,8 @@ async function processJob(job, preclaimed = false) {
             await axios.patch(`http://localhost:${config.server.port}/api/jobs/${job.id}`,
                 {
                     status: 'failed',
-                    error: error.message
+                    result: { error: error.message },
+                    manageRetry: false
                 });
             logger.debug(`Job ${job.id} marked as failed`);
         } catch (failError) {

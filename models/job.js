@@ -60,21 +60,36 @@ class Job {
         }
     }
 
-    async updateStatus(id, status, workerId = null, result = null) {
+    async updateStatus(id, status, workerId = null, result = null, options = {}) {
         const job = await this.getById(id);
         if (!job) return;
 
-        if (status === 'failed' && job.is_retry_enabled && job.attempts < job.retry_count) {
-            const nextAttemptAt = new Date(Date.now() + job.retry_delay * 60 * 60 * 1000).toISOString();
-            await this.db.run(
-                `UPDATE jobs SET status = ?, worker_id = ?, result = ?, attempts = attempts + 1, next_attempt_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-                ['failed', workerId, result ? JSON.stringify(result) : null, nextAttemptAt, id]
-            );
-            console.log(`Job ${id} scheduled for retry. Attempt: ${job.attempts + 1} of ${job.retry_count}. Next attempt at: ${nextAttemptAt}`);
+        const { manageRetry = true } = options ?? {};
+        const serializedResult = result ? JSON.stringify(result) : null;
+
+        if (status === 'failed') {
+            if (manageRetry && job.is_retry_enabled && job.attempts < job.retry_count) {
+                const nextAttemptAt = new Date(Date.now() + job.retry_delay * 60 * 60 * 1000).toISOString();
+                await this.db.run(
+                    `UPDATE jobs SET status = ?, worker_id = ?, result = ?, attempts = attempts + 1, next_attempt_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                    ['failed', workerId, serializedResult, nextAttemptAt, id]
+                );
+                console.log(`Job ${id} scheduled for retry. Attempt: ${job.attempts + 1} of ${job.retry_count}. Next attempt at: ${nextAttemptAt}`);
+            } else if (manageRetry) {
+                await this.db.run(
+                    `UPDATE jobs SET status = ?, worker_id = ?, result = ?, next_attempt_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                    ['failed', workerId, serializedResult, id]
+                );
+            } else {
+                await this.db.run(
+                    `UPDATE jobs SET status = ?, worker_id = ?, result = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                    ['failed', workerId, serializedResult, id]
+                );
+            }
         } else {
             await this.db.run(
                 `UPDATE jobs SET status = ?, worker_id = ?, result = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-                [status, workerId, result ? JSON.stringify(result) : null, id]
+                [status, workerId, serializedResult, id]
             );
         }
     }
