@@ -53,7 +53,6 @@ async function startServer() {
     app.post('/api/jobs', async (req, res) => {
         try {
             const { type, payload } = req.body;
-            const { isRetryEnabled, retryDelay, retryCount } = payload;
 
             if (!type || !payload) {
                 return res.status(400).json({ error: 'Type and payload are required' });
@@ -70,11 +69,121 @@ async function startServer() {
                 return res.status(400).json({ error: `Invalid job type. Must be one of: ${Object.values(config.jobTypes).join(', ')}` });
             }
 
-            const jobId = await jobModel.create(type, payload, { isRetryEnabled, retryDelay, retryCount });
+            const pickDefined = (...values) => values.find((value) => value !== undefined && value !== null);
 
-            await queueService.addJob(jobId, type, payload);
+            const normalizeBoolean = (value) => {
+                if (typeof value === 'boolean') return value;
+                if (typeof value === 'number') return value !== 0;
+                if (typeof value === 'string') {
+                    const lowered = value.trim().toLowerCase();
+                    if (['true', '1', 'yes', 'y'].includes(lowered)) return true;
+                    if (['false', '0', 'no', 'n'].includes(lowered)) return false;
+                }
+                return undefined;
+            };
 
-            console.log(`Job created with ID: ${jobId}, Type: ${type}, RetryEnabled: ${isRetryEnabled}, RetryDelay: ${retryDelay}h, RetryCount: ${retryCount}`);
+            const normalizeInteger = (value) => {
+                if (value === undefined || value === null) return undefined;
+                const parsed = Number(value);
+                if (!Number.isFinite(parsed)) return undefined;
+                return Math.max(0, Math.floor(parsed));
+            };
+
+            const rawRetryEnabled = pickDefined(
+                payload.isRetryEnabled,
+                payload.retryEnabled,
+                payload.retry_options?.isRetryEnabled,
+                payload.retry_options?.enabled,
+                payload.retryOptions?.isRetryEnabled,
+                payload.retryOptions?.retryEnabled,
+                payload.retryOptions?.enabled,
+                req.body.isRetryEnabled,
+                req.body.retryEnabled
+            );
+
+            const rawRetryDelay = pickDefined(
+                payload.retryDelay,
+                payload.retry_delay,
+                payload.retryOptions?.retryDelay,
+                payload.retryOptions?.delay,
+                payload.retry_options?.retryDelay,
+                payload.retry_options?.delay,
+                req.body.retryDelay,
+                req.body.retry_delay
+            );
+
+            const rawRetryCount = pickDefined(
+                payload.retryCount,
+                payload.retry_count,
+                payload.retryOptions?.retryCount,
+                payload.retryOptions?.count,
+                payload.retry_options?.retryCount,
+                payload.retry_options?.count,
+                req.body.retryCount,
+                req.body.retry_count
+            );
+
+            const normalizedRetryEnabled = normalizeBoolean(rawRetryEnabled);
+            const normalizedRetryDelay = normalizeInteger(rawRetryDelay);
+            const normalizedRetryCount = normalizeInteger(rawRetryCount);
+
+            const retryOptions = {};
+            if (normalizedRetryEnabled !== undefined) {
+                retryOptions.isRetryEnabled = normalizedRetryEnabled;
+            }
+            if (normalizedRetryDelay !== undefined) {
+                retryOptions.retryDelay = normalizedRetryDelay;
+            }
+            if (normalizedRetryCount !== undefined) {
+                retryOptions.retryCount = normalizedRetryCount;
+            }
+
+            const jobPayload = { ...payload };
+            if (payload.retryOptions && typeof payload.retryOptions === 'object' && !Array.isArray(payload.retryOptions)) {
+                jobPayload.retryOptions = { ...payload.retryOptions };
+            }
+            if (payload.retry_options && typeof payload.retry_options === 'object' && !Array.isArray(payload.retry_options)) {
+                jobPayload.retry_options = { ...payload.retry_options };
+            }
+            delete jobPayload.isRetryEnabled;
+            delete jobPayload.retryEnabled;
+            delete jobPayload.retryDelay;
+            delete jobPayload.retry_delay;
+            delete jobPayload.retryCount;
+            delete jobPayload.retry_count;
+
+            const pruneRetryContainer = (container) => {
+                if (!container || typeof container !== 'object' || Array.isArray(container)) {
+                    return;
+                }
+                delete container.delay;
+                delete container.count;
+                delete container.isRetryEnabled;
+                delete container.retryDelay;
+                delete container.retryCount;
+                delete container.retryEnabled;
+                if (!Object.keys(container).length) {
+                    return true;
+                }
+                return false;
+            };
+
+            if (pruneRetryContainer(jobPayload.retryOptions)) {
+                delete jobPayload.retryOptions;
+            }
+            if (pruneRetryContainer(jobPayload.retry_options)) {
+                delete jobPayload.retry_options;
+            }
+
+            const jobId = await jobModel.create(type, jobPayload, retryOptions);
+
+            await queueService.addJob(jobId, type, jobPayload);
+
+            const logRetryEnabled = normalizedRetryEnabled ?? false;
+            const logRetryDelay = normalizedRetryDelay ?? 1;
+            const logRetryCount = normalizedRetryCount ?? 5;
+
+            console.log(`Job created with ID: ${jobId}, Type: ${type}, RetryEnabled: ${logRetryEnabled}, RetryDelay: ${logRetryDelay}h, RetryCount: ${logRetryCount}`);
 
             res.status(201).json({ jobId });
         } catch (error) {
