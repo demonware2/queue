@@ -5,7 +5,7 @@ const nodemailer = require('nodemailer');
 class EmailService {
   constructor() {
     // Per-module state map
-    // module => { mainTransporter, backupTransporter, mainConfig, backupConfig, serviceConfig, useBackup }
+    // module => { mainTransporter, backupTransporter, mainConfig, backupConfig, serviceConfig, useBackup, mainStatus, lastStatusChangeAt, lastHealthCheckAt }
     this.modules = new Map();
     this.configDbPath = process.env.CONFIG_DB_PATH;
     this.logDbPath = process.env.LOG_DB_PATH;
@@ -41,10 +41,12 @@ class EmailService {
         throw new Error('Main email configuration not found in database');
       }
 
+      const now = new Date();
       let mainTransporter = null;
       let backupTransporter = null;
       let backupConfig = null;
       let useBackup = false;
+      let mainStatus = 'unknown';
 
       // Try to build main transporter
       try {
@@ -100,6 +102,11 @@ class EmailService {
       // Decide initial useBackup only if allowed and needed
       if (!mainTransporter && backupTransporter && serviceConfig.fail_over == 1) {
         useBackup = true;
+        mainStatus = 'down';
+      } else if (mainTransporter) {
+        mainStatus = 'up';
+      } else {
+        mainStatus = 'down';
       }
 
       this.modules.set(targetModule, {
@@ -109,6 +116,9 @@ class EmailService {
         backupConfig,
         serviceConfig,
         useBackup,
+        mainStatus,
+        lastStatusChangeAt: now,
+        lastHealthCheckAt: null,
       });
 
       await db.close();
@@ -207,6 +217,10 @@ class EmailService {
     }
 
     const state = this.modules.get(targetModule);
+    if (state.mainStatus === 'down' && state.backupTransporter && state.serviceConfig.fail_over) {
+      state.useBackup = true;
+    }
+
     const transporter = state.useBackup ? state.backupTransporter : state.mainTransporter;
     const config = state.useBackup ? state.backupConfig : state.mainConfig;
     let result = null;
@@ -241,6 +255,10 @@ class EmailService {
 
       try {
         result = await transporter.sendMail(emailToSend);
+        if (!state.useBackup && state.mainStatus !== 'up') {
+          state.mainStatus = 'up';
+          state.lastStatusChangeAt = new Date();
+        }
         this.logEmailAttempt(emailOptions, result, null, moduleForLog, state.useBackup);
 
         return {
@@ -254,6 +272,8 @@ class EmailService {
         if (!state.useBackup && state.backupTransporter && state.serviceConfig.fail_over) {
           console.log(`Main email service for module '${moduleForLog}' failed, switching to backup`);
           state.useBackup = true;
+          state.mainStatus = 'down';
+          state.lastStatusChangeAt = new Date();
 
           this.logEmailAttempt(emailOptions, null, sendError, moduleForLog, false);
 
@@ -300,12 +320,16 @@ class EmailService {
 
   async checkServiceHealth() {
     let anyRecovered = false;
+    const checkTime = new Date();
     for (const [mod, state] of this.modules.entries()) {
+      state.lastHealthCheckAt = checkTime;
       if (state.useBackup && state.mainTransporter) {
         try {
           await state.mainTransporter.verify();
           console.log(`Main email service for module '${mod}' has recovered, switching back`);
           state.useBackup = false;
+          state.mainStatus = 'up';
+          state.lastStatusChangeAt = checkTime;
 
           if (state.serviceConfig.email_notification && state.serviceConfig.admin_email && state.backupTransporter) {
             try {
@@ -326,6 +350,7 @@ class EmailService {
 
           anyRecovered = true;
         } catch (error) {
+          state.mainStatus = 'down';
           console.log(`Main email service for module '${mod}' is still unavailable`);
         }
       }

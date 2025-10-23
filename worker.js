@@ -76,7 +76,7 @@ function setupEmailHealthCheck() {
             } catch (error) {
                 logger.warn(`Worker ${workerId}: Email health check error: ${error.message}`);
             }
-        }, 5 * 60 * 1000);
+        }, 30 * 60 * 1000);
     }
 }
 
