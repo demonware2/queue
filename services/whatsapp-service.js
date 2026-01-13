@@ -1,14 +1,23 @@
 const axios = require('axios');
 const dotenv = require('dotenv');
+const Redis = require('ioredis');
+const config = require('../config');
 
 dotenv.config();
 
 class WhatsAppService {
   constructor() {
     this.defaultBaseUrl = process.env.WHATSAPP_API_URL || 'http://localhost:7827';
-    this.defaultDelayMs = process.env.WHATSAPP_DELAY_MS || 5000;
+
+    this.defaultDelayMs = parseInt(process.env.WHATSAPP_DELAY_MS || '25000');
+    this.minDelayMs = parseInt(process.env.WHATSAPP_MIN_DELAY_MS || '20000');
+    this.maxDelayMs = parseInt(process.env.WHATSAPP_MAX_DELAY_MS || '30000');
+
     this.initialized = new Map();
-    this.messageQueues = new Map();
+
+    this.redis = new Redis(config.redis);
+    this.REDIS_LOCK_KEY = 'whatsapp:global_lock';
+    this.REDIS_QUEUE_KEY = 'whatsapp:processing_queue';
 
     this.wablasToken = process.env.WABLAS_TOKEN || '';
     this.wablasSecret = process.env.WABLAS_SECRET || '';
@@ -47,23 +56,67 @@ class WhatsAppService {
     }
   }
 
-  getQueueForPort(baseUrl) {
-    if (!this.messageQueues.has(baseUrl)) {
-      this.messageQueues.set(baseUrl, Promise.resolve());
+  async acquireGlobalLock(maxWaitMs = 300000) {
+    const lockId = `${Date.now()}-${Math.random()}`;
+    const startTime = Date.now();
+
+    console.log(`[WhatsApp] Attempting to acquire global lock (lockId: ${lockId})...`);
+
+    while (Date.now() - startTime < maxWaitMs) {
+      const result = await this.redis.set(
+        this.REDIS_LOCK_KEY,
+        lockId,
+        'PX', 600000,
+        'NX'
+      );
+
+      if (result === 'OK') {
+        console.log(`[WhatsApp] ✅ Global lock acquired (lockId: ${lockId})`);
+        return lockId;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
-    return this.messageQueues.get(baseUrl);
+
+    throw new Error(`Failed to acquire WhatsApp global lock after ${maxWaitMs}ms`);
+  }
+
+  async releaseGlobalLock(lockId) {
+    try {
+      const currentLockId = await this.redis.get(this.REDIS_LOCK_KEY);
+      if (currentLockId === lockId) {
+        await this.redis.del(this.REDIS_LOCK_KEY);
+        console.log(`[WhatsApp] ✅ Global lock released (lockId: ${lockId})`);
+      } else {
+        console.warn(`[WhatsApp] ⚠️ Lock already released or owned by another process`);
+      }
+    } catch (error) {
+      console.error(`[WhatsApp] Error releasing lock:`, error.message);
+    }
+  }
+
+  calculateDelay(customDelay = null) {
+    if (customDelay) {
+      return parseInt(customDelay);
+    }
+
+    const min = this.minDelayMs;
+    const max = this.maxDelayMs;
+    return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
   async sendMessage(payload) {
-    const baseUrl = payload.baseUrl || this.defaultBaseUrl;
+    let lockId = null;
 
-    const currentQueue = this.getQueueForPort(baseUrl);
-    const newQueue = currentQueue.then(async () => {
-      return this._sendMessageInternal(payload);
-    });
-
-    this.messageQueues.set(baseUrl, newQueue);
-    return newQueue;
+    try {
+      lockId = await this.acquireGlobalLock();
+      const result = await this._sendMessageInternal(payload);
+      return result;
+    } finally {
+      if (lockId) {
+        await this.releaseGlobalLock(lockId);
+      }
+    }
   }
 
   async _sendMessageInternal(payload) {
@@ -77,12 +130,7 @@ class WhatsAppService {
         throw new Error('Number and message are required for WhatsApp message');
       }
 
-      const delayMs = parseInt(payload.delay || payload.delayMs || this.defaultDelayMs);
-
-      console.log(`[${baseUrl}] Processing message to ${payload.number} (delay: ${delayMs}ms)`);
-
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-
+      console.log(`[${baseUrl}] Sending message to ${payload.number}...`);
       let response = await axios.post(`${baseUrl}/send-message`, {
         number: payload.number,
         message: payload.message
@@ -92,6 +140,10 @@ class WhatsAppService {
 
       const sentTime = new Date().toLocaleTimeString();
       console.log(`[${baseUrl}] ✅ Message sent to ${payload.number} at ${sentTime}`);
+
+      const delayMs = this.calculateDelay(payload.delay || payload.delayMs);
+      console.log(`[${baseUrl}] Waiting ${delayMs}ms before next message...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
 
       if (response.data && response.data.success) {
         return {
@@ -141,15 +193,17 @@ class WhatsAppService {
   }
 
   async sendGroupMessage(payload) {
-    const baseUrl = payload.baseUrl || this.defaultBaseUrl;
+    let lockId = null;
 
-    const currentQueue = this.getQueueForPort(baseUrl);
-    const newQueue = currentQueue.then(async () => {
-      return this._sendGroupMessageInternal(payload);
-    });
-
-    this.messageQueues.set(baseUrl, newQueue);
-    return newQueue;
+    try {
+      lockId = await this.acquireGlobalLock();
+      const result = await this._sendGroupMessageInternal(payload);
+      return result;
+    } finally {
+      if (lockId) {
+        await this.releaseGlobalLock(lockId);
+      }
+    }
   }
 
   async _sendGroupMessageInternal(payload) {
@@ -162,12 +216,7 @@ class WhatsAppService {
         throw new Error('Group ID and message are required for WhatsApp group message');
       }
 
-      const delayMs = parseInt(payload.delay || payload.delayMs || this.defaultDelayMs);
-
-      console.log(`[${baseUrl}] Processing group message to ${payload.groupId} (delay: ${delayMs}ms)`);
-
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-
+      console.log(`[${baseUrl}] Sending group message to ${payload.groupId}...`);
       let response = await axios.post(`${baseUrl}/send-group-message`, {
         groupId: payload.groupId,
         message: payload.message
@@ -177,6 +226,10 @@ class WhatsAppService {
 
       const sentTime = new Date().toLocaleTimeString();
       console.log(`[${baseUrl}] ✅ Group message sent to ${payload.groupId} at ${sentTime}`);
+
+      const delayMs = this.calculateDelay(payload.delay || payload.delayMs);
+      console.log(`[${baseUrl}] Waiting ${delayMs}ms before next message...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
 
       if (response.data && response.data.success) {
         return {
@@ -239,7 +292,6 @@ class WhatsAppService {
         console.log(`[${baseUrl}] Status not ready, status: ${response.status}`);
       } catch (e) {
         console.error(`[${baseUrl}] Error in waitUntilReady: ${e.message}`);
-        // ignore and retry
       }
       await new Promise(r => setTimeout(r, intervalMs));
     }
@@ -340,26 +392,38 @@ class WhatsAppService {
     };
   }
 
-  resetQueue(baseUrl = null) {
-    const targetUrl = baseUrl || this.defaultBaseUrl;
-    this.messageQueues.set(targetUrl, Promise.resolve());
-    console.log(`[${targetUrl}] WhatsApp message queue reset`);
+  async resetGlobalLock() {
+    try {
+      await this.redis.del(this.REDIS_LOCK_KEY);
+      console.log('[WhatsApp] Global lock forcefully reset');
+      return true;
+    } catch (error) {
+      console.error('[WhatsApp] Error resetting global lock:', error.message);
+      return false;
+    }
   }
 
-  resetAllQueues() {
-    this.messageQueues.clear();
-    console.log('All WhatsApp message queues reset');
-  }
+  async getQueueStatus() {
+    try {
+      const lockId = await this.redis.get(this.REDIS_LOCK_KEY);
+      const ttl = await this.redis.pttl(this.REDIS_LOCK_KEY);
 
-  getQueueStatus() {
-    const status = {};
-    for (const [baseUrl, queue] of this.messageQueues) {
-      status[baseUrl] = {
-        hasQueue: !!queue,
-        initialized: this.initialized.get(baseUrl) || false
+      return {
+        isLocked: !!lockId,
+        lockId: lockId,
+        lockExpiresInMs: ttl > 0 ? ttl : null,
+        redisConnected: this.redis.status === 'ready'
+      };
+    } catch (error) {
+      console.error('[WhatsApp] Error getting queue status:', error.message);
+      return {
+        isLocked: false,
+        lockId: null,
+        lockExpiresInMs: null,
+        redisConnected: false,
+        error: error.message
       };
     }
-    return status;
   }
 }
 
