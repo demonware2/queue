@@ -6,7 +6,7 @@ const config = require('../config');
 dotenv.config();
 
 class WhatsAppService {
-    constructor() {
+    constructor(redisInstance = null) {
         this.defaultBaseUrl = process.env.WHATSAPP_API_URL || 'http://localhost:7827';
 
         this.defaultDelayMs = parseInt(process.env.WHATSAPP_DELAY_MS || '25000');
@@ -15,13 +15,69 @@ class WhatsAppService {
 
         this.initialized = new Map();
 
-        this.redis = new Redis(config.redis);
+        this.limitCount = config.whatsapp?.limitCount || 80;
+        this.limitWindowSeconds = (config.whatsapp?.limitWindowHours || 6) * 3600;
+        this.redisKey = 'whatsapp:limit:count';
+
+        if (redisInstance) {
+            this.redis = redisInstance;
+        } else {
+            this.redis = new Redis(config.redis);
+        }
+
         this.REDIS_LOCK_KEY = 'whatsapp:global_lock';
         this.REDIS_QUEUE_KEY = 'whatsapp:processing_queue';
 
         this.wablasToken = process.env.WABLAS_TOKEN || '';
         this.wablasSecret = process.env.WABLAS_SECRET || '';
         this.wablasBaseUrl = 'https://bdg.wablas.com/api';
+    }
+
+    async _checkRateLimit() {
+        while (true) {
+            const count = await this.redis.get(this.redisKey);
+            const currentCount = count ? parseInt(count) : 0;
+
+            if (currentCount >= this.limitCount) {
+                const ttl = await this.redis.ttl(this.redisKey);
+
+                if (ttl === -2) {
+                    continue;
+                }
+
+                if (ttl === -1) {
+                    await this.redis.expire(this.redisKey, this.limitWindowSeconds);
+                    console.log(`[WhatsAppService] Limit active but no expiry found. Resetting to ${this.limitWindowSeconds}s.`);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    continue;
+                }
+
+                const waitTimeMs = (ttl * 1000) + 1000;
+                const finalWaitMs = Math.min(waitTimeMs, 300000);
+
+                console.log(`[WhatsAppService] Rate limit reached (${currentCount}/${this.limitCount}). Waiting ${Math.round(finalWaitMs / 1000)}s for reset...`);
+                await new Promise(resolve => setTimeout(resolve, finalWaitMs));
+                continue;
+            }
+
+            const newCount = await this.redis.incr(this.redisKey);
+
+            if (newCount === 1) {
+                await this.redis.expire(this.redisKey, this.limitWindowSeconds);
+            } else {
+                const ttl = await this.redis.ttl(this.redisKey);
+                if (ttl === -1) {
+                    await this.redis.expire(this.redisKey, this.limitWindowSeconds);
+                }
+            }
+
+            if (newCount <= this.limitCount) {
+                console.log(`[WhatsAppService] Rate limit check passed: ${newCount}/${this.limitCount}`);
+                return true;
+            }
+
+            console.log(`[WhatsAppService] Limit exceeded after increment: ${newCount}/${this.limitCount}. Retrying wait...`);
+        }
     }
 
     async init(baseUrl = null) {
@@ -124,6 +180,8 @@ class WhatsAppService {
         const baseUrl = payload.baseUrl || this.defaultBaseUrl;
 
         try {
+            await this._checkRateLimit();
+
             await this.waitUntilReady(baseUrl, 45000, 1500);
 
             if (!payload.number || !payload.message) {
@@ -210,6 +268,8 @@ class WhatsAppService {
         const baseUrl = payload.baseUrl || this.defaultBaseUrl;
 
         try {
+            await this._checkRateLimit();
+
             await this.waitUntilReady(baseUrl, 45000, 1500);
 
             if (!payload.groupId || !payload.message) {

@@ -89,7 +89,7 @@ if (workerType === config.jobTypes.CRONJOB) {
 }
 
 if (workerType === config.jobTypes.WHATSAPP) {
-    whatsAppService = new WhatsAppService();
+    whatsAppService = new WhatsAppService(redis);
 }
 
 const API_ENDPOINTS = {

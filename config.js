@@ -22,6 +22,10 @@ const config = {
     defaultCount: 1,
     maxCount: 10,
   },
+  whatsapp: {
+    limitCount: parseInt(process.env.WHATSAPP_LIMIT_COUNT) || 80,
+    limitWindowHours: parseInt(process.env.WHATSAPP_LIMIT_WINDOW_HOURS) || 6,
+  }
 };
 
 module.exports = config;
