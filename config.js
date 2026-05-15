@@ -18,6 +18,7 @@ const config = {
     CRONJOB: 'cronjob',
     RETRY: 'retry',
     DOC_CONVERT: 'doc_convert',
+    WEBHOOK: 'webhook',
   },
   workerSettings: {
     defaultCount: 1,

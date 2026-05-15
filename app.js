@@ -48,7 +48,8 @@ async function startServer() {
     }
 
     const app = express();
-    app.use(bodyParser.json());
+    app.use(bodyParser.json({ limit: '10mb' }));
+    app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
     app.post('/api/jobs', async (req, res) => {
         try {
@@ -97,6 +98,10 @@ async function startServer() {
                 payload.retryOptions?.isRetryEnabled,
                 payload.retryOptions?.retryEnabled,
                 payload.retryOptions?.enabled,
+                req.body.retryOptions?.isRetryEnabled,
+                req.body.retryOptions?.enabled,
+                req.body.retry_options?.isRetryEnabled,
+                req.body.retry_options?.enabled,
                 req.body.isRetryEnabled,
                 req.body.retryEnabled
             );
@@ -108,6 +113,10 @@ async function startServer() {
                 payload.retryOptions?.delay,
                 payload.retry_options?.retryDelay,
                 payload.retry_options?.delay,
+                req.body.retryOptions?.retryDelay,
+                req.body.retryOptions?.delay,
+                req.body.retry_options?.retryDelay,
+                req.body.retry_options?.delay,
                 req.body.retryDelay,
                 req.body.retry_delay
             );
@@ -119,6 +128,10 @@ async function startServer() {
                 payload.retryOptions?.count,
                 payload.retry_options?.retryCount,
                 payload.retry_options?.count,
+                req.body.retryOptions?.retryCount,
+                req.body.retryOptions?.count,
+                req.body.retry_options?.retryCount,
+                req.body.retry_options?.count,
                 req.body.retryCount,
                 req.body.retry_count
             );
