@@ -5,6 +5,7 @@ const minimist = require('minimist');
 const EmailService = require('./services/email-service');
 const CronjobService = require('./services/cronjob-service');
 const WhatsAppService = require('./services/whatsapp-service');
+const DocConverterService = require('./services/doc-converter-service');
 const logger = require('./services/logger');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
@@ -24,6 +25,7 @@ let emailService = null;
 let cronjobService = null;
 let healthCheckInterval = null;
 let whatsAppService = null;
+let docConverterService = null;
 let keepRunning = true;
 
 function safeStringify(value, opts = {}) {
@@ -90,6 +92,10 @@ if (workerType === config.jobTypes.CRONJOB) {
 
 if (workerType === config.jobTypes.WHATSAPP) {
     whatsAppService = new WhatsAppService(redis);
+}
+
+if (workerType === config.jobTypes.DOC_CONVERT) {
+    docConverterService = new DocConverterService(redis);
 }
 
 const API_ENDPOINTS = {
@@ -177,6 +183,9 @@ async function processJob(job, preclaimed = false) {
             } else {
                 throw new Error('Either number or groupId must be provided for WhatsApp message');
             }
+        } else if (job.type === config.jobTypes.DOC_CONVERT && docConverterService) {
+            logger.info(`Starting document conversion for file: ${job.payload.fileHash}`);
+            result = await docConverterService.process(job);
         } else {
             const endpoint = API_ENDPOINTS[job.type];
             if (!endpoint) {
@@ -285,6 +294,11 @@ async function brpopLoop() {
                         await processJob(job, true);
                     } else {
                         logger.debug(`Skipping job ${job.id}: not pending (already claimed/processed)`);
+                    }
+
+                    if (workerType === config.jobTypes.DOC_CONVERT) {
+                        logger.debug(`Breathing room: waiting 2 seconds before next job`);
+                        await new Promise(r => setTimeout(r, 2000));
                     }
                 } catch (claimErr) {
                     logger.warn(`Claim request failed for job ${job.id}: ${claimErr.message}`);

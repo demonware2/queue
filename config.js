@@ -17,6 +17,7 @@ const config = {
     NOTIFICATION: 'notification',
     CRONJOB: 'cronjob',
     RETRY: 'retry',
+    DOC_CONVERT: 'doc_convert',
   },
   workerSettings: {
     defaultCount: 1,
