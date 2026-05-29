@@ -8,6 +8,7 @@ const WhatsAppService = require('./services/whatsapp-service');
 const DocConverterService = require('./services/doc-converter-service');
 const WebhookService = require('./services/webhook-service');
 const DelayedInputService = require('./services/delayed-input-service');
+const TelegramService = require('./services/telegram-service');
 const logger = require('./services/logger');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
@@ -30,6 +31,7 @@ let whatsAppService = null;
 let docConverterService = null;
 let webhookService = null;
 let delayedInputService = null;
+let telegramService = null;
 let keepRunning = true;
 
 function safeStringify(value, opts = {}) {
@@ -108,6 +110,10 @@ if (workerType === config.jobTypes.WEBHOOK) {
 
 if (workerType === config.jobTypes.DELAYED_INPUT) {
     delayedInputService = new DelayedInputService(redis);
+}
+
+if (workerType === config.jobTypes.TELEGRAM) {
+    telegramService = new TelegramService();
 }
 
 const API_ENDPOINTS = {
@@ -202,6 +208,8 @@ async function processJob(job, preclaimed = false) {
             result = await delayedInputService.process(job.payload);
         } else if (job.type === config.jobTypes.WEBHOOK && webhookService) {
             result = await webhookService.send(job.payload);
+        } else if (job.type === config.jobTypes.TELEGRAM && telegramService) {
+            result = await telegramService.sendMessage(job.payload);
         } else {
             const endpoint = API_ENDPOINTS[job.type];
             if (!endpoint) {

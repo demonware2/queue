@@ -20,6 +20,7 @@ const config = {
     DOC_CONVERT: 'doc_convert',
     WEBHOOK: 'webhook',
     DELAYED_INPUT: 'delayed_input',
+    TELEGRAM: 'telegram',
   },
   workerSettings: {
     defaultCount: 1,
