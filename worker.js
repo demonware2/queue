@@ -113,7 +113,7 @@ if (workerType === config.jobTypes.DELAYED_INPUT) {
 }
 
 if (workerType === config.jobTypes.TELEGRAM) {
-    telegramService = new TelegramService();
+    telegramService = new TelegramService(redis);
 }
 
 const API_ENDPOINTS = {
