@@ -21,6 +21,7 @@ const config = {
     WEBHOOK: 'webhook',
     DELAYED_INPUT: 'delayed_input',
     TELEGRAM: 'telegram',
+    PUSH_NOTIFICATION: 'push_notification',
   },
   workerSettings: {
     defaultCount: 1,
