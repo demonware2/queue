@@ -11,6 +11,11 @@ async function initDatabase() {
     });
 
     await db.exec(`
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
+    `);
+
+    await db.exec(`
         CREATE TABLE IF NOT EXISTS workers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             type TEXT NOT NULL,
@@ -42,6 +47,7 @@ async function initDatabase() {
         CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs (type);
         CREATE INDEX IF NOT EXISTS idx_workers_type ON workers (type);
         CREATE INDEX IF NOT EXISTS idx_workers_status ON workers (status);
+        CREATE INDEX IF NOT EXISTS idx_jobs_pending_claim ON jobs (status, type, next_attempt_at, created_at);
     `);
 
     try {

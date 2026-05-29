@@ -61,13 +61,14 @@ class Job {
     }
 
     async updateStatus(id, status, workerId = null, result = null, options = {}) {
-        const job = await this.getById(id);
-        if (!job) return;
-
-        const { manageRetry = true } = options ?? {};
         const serializedResult = result ? JSON.stringify(result) : null;
 
         if (status === 'failed') {
+            const job = await this.getById(id);
+            if (!job) return;
+
+            const { manageRetry = true } = options ?? {};
+
             if (manageRetry && job.is_retry_enabled && job.attempts < job.retry_count) {
                 const nextAttemptAt = new Date(Date.now() + job.retry_delay * 60 * 60 * 1000).toISOString();
                 await this.db.run(
@@ -119,12 +120,23 @@ class Job {
     }
 
     async getStats() {
+        const stats = await this.db.get(`
+            SELECT 
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processing,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+            FROM jobs
+        `);
+
+        const byType = await this.db.all('SELECT type, COUNT(*) as count FROM jobs GROUP BY type');
+
         return {
-            pending: await this.db.get('SELECT COUNT(*) as count FROM jobs WHERE status = ?', ['pending']),
-            processing: await this.db.get('SELECT COUNT(*) as count FROM jobs WHERE status = ?', ['processing']),
-            completed: await this.db.get('SELECT COUNT(*) as count FROM jobs WHERE status = ?', ['completed']),
-            failed: await this.db.get('SELECT COUNT(*) as count FROM jobs WHERE status = ?', ['failed']),
-            byType: await this.db.all('SELECT type, COUNT(*) as count FROM jobs GROUP BY type')
+            pending: { count: stats.pending || 0 },
+            processing: { count: stats.processing || 0 },
+            completed: { count: stats.completed || 0 },
+            failed: { count: stats.failed || 0 },
+            byType
         };
     }
 }

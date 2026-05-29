@@ -5,3 +5,5 @@ logs/
 *.log
 .idea/
 temp/
+/queue_system.db-shm
+/queue_system.db-wal

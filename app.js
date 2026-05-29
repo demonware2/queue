@@ -382,6 +382,23 @@ async function startServer() {
         }
     });
 
+    setInterval(async () => {
+        try {
+            console.log('Running scheduled 30-day database retention cleanup...');
+            const result = await db.run(
+                `DELETE FROM jobs 
+                 WHERE (status = 'completed' OR status = 'failed') 
+                 AND updated_at < datetime('now', '-30 days')`
+            );
+            if (result.changes > 0) {
+                console.log(`Database cleanup: Deleted ${result.changes} jobs older than 30 days.`);
+                await db.run('VACUUM;');
+            }
+        } catch (cleanupError) {
+            console.error('Failed to run database retention cleanup:', cleanupError);
+        }
+    }, 24 * 60 * 60 * 1000);
+
     app.listen(config.server.port, () => {
         console.log(`Server running on port ${config.server.port}`);
     });
