@@ -19,6 +19,7 @@ const config = {
     RETRY: 'retry',
     DOC_CONVERT: 'doc_convert',
     WEBHOOK: 'webhook',
+    DELAYED_INPUT: 'delayed_input',
   },
   workerSettings: {
     defaultCount: 1,

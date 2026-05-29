@@ -16,7 +16,7 @@ class WhatsAppService {
         this.initialized = new Map();
 
         this.limitCount = config.whatsapp?.limitCount || 80;
-        this.limitWindowSeconds = (config.whatsapp?.limitWindowHours || 6) * 3600;
+        this.limitWindowSeconds = (config.whatsapp?.limitWindowHours || 2) * 3600;
         this.redisKey = 'whatsapp:limit:count';
 
         if (redisInstance) {

@@ -7,7 +7,6 @@ class WorkerManager {
     this.db = db;
     this.workerModel = workerModel;
     this.workers = {};
-    // Track restart backoff per worker ID
     this.restartState = {};
     this.restartTimers = {};
   }
@@ -19,10 +18,12 @@ class WorkerManager {
       await this.startWorker(worker.id, worker.type);
     }
 
-    const retryWorkers = dbWorkers.filter(w => w.type === config.jobTypes.RETRY);
-    if (retryWorkers.length === 0) {
-        console.log('No retry worker found, creating one...');
-        await this.createWorker(config.jobTypes.RETRY);
+    for (const type of Object.values(config.jobTypes)) {
+      const typeWorkers = dbWorkers.filter(w => w.type === type);
+      if (typeWorkers.length === 0) {
+        console.log(`No worker found for type "${type}", creating default worker...`);
+        await this.createWorker(type);
+      }
     }
   }
 

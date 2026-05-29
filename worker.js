@@ -7,6 +7,7 @@ const CronjobService = require('./services/cronjob-service');
 const WhatsAppService = require('./services/whatsapp-service');
 const DocConverterService = require('./services/doc-converter-service');
 const WebhookService = require('./services/webhook-service');
+const DelayedInputService = require('./services/delayed-input-service');
 const logger = require('./services/logger');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
@@ -28,6 +29,7 @@ let healthCheckInterval = null;
 let whatsAppService = null;
 let docConverterService = null;
 let webhookService = null;
+let delayedInputService = null;
 let keepRunning = true;
 
 function safeStringify(value, opts = {}) {
@@ -102,6 +104,10 @@ if (workerType === config.jobTypes.DOC_CONVERT) {
 
 if (workerType === config.jobTypes.WEBHOOK) {
     webhookService = new WebhookService(redis);
+}
+
+if (workerType === config.jobTypes.DELAYED_INPUT) {
+    delayedInputService = new DelayedInputService(redis);
 }
 
 const API_ENDPOINTS = {
@@ -192,6 +198,8 @@ async function processJob(job, preclaimed = false) {
         } else if (job.type === config.jobTypes.DOC_CONVERT && docConverterService) {
             logger.info(`Starting document conversion for file: ${job.payload.fileHash}`);
             result = await docConverterService.process(job);
+        } else if (job.type === config.jobTypes.DELAYED_INPUT && delayedInputService) {
+            result = await delayedInputService.process(job.payload);
         } else if (job.type === config.jobTypes.WEBHOOK && webhookService) {
             result = await webhookService.send(job.payload);
         } else {
