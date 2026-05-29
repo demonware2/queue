@@ -56,6 +56,10 @@ class TelegramService {
     }
 
     async sendMessage(payload) {
+        if (payload.action === 'delete') {
+            return this._deleteMessageInternal(payload);
+        }
+
         let lockId = null;
         try {
             lockId = await this.acquireLock();
@@ -132,6 +136,33 @@ class TelegramService {
             }
 
             logger.error(`[TelegramService] API request failed: ${error.message} (${errorDescription})`);
+            throw error;
+        }
+    }
+
+    async _deleteMessageInternal(payload) {
+        const token = payload.token;
+        const chatId = payload.chatId;
+        const messageId = payload.messageId;
+
+        if (!token || !chatId || !messageId) {
+            throw new Error('[TelegramService] deleteMessage requires token, chatId, and messageId in payload');
+        }
+
+        this.validatePayload(token, chatId);
+
+        const url = `https://api.telegram.org/bot${token}/deleteMessage`;
+
+        try {
+            logger.info(`[TelegramService] Deleting message ${messageId} from chat ${chatId}`);
+            const response = await axios.post(url, {
+                chat_id:    chatId,
+                message_id: messageId
+            }, { timeout: 10000 });
+            return response.data;
+        } catch (error) {
+            const errorDescription = error.response?.data?.description || '';
+            logger.error(`[TelegramService] deleteMessage failed: ${error.message} (${errorDescription})`);
             throw error;
         }
     }
