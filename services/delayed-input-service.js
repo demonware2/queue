@@ -115,7 +115,8 @@ class DelayedInputService {
                     error: err.message
                 });
 
-                await this.redis.set(activeKey, failedStored, 'EX', 3600);
+                const failedKey = `delayed_failed:${key}`;
+                await this.redis.set(failedKey, failedStored, 'EX', 3600);
                 console.error(`[DelayedInputService] Webhook trigger failed permanently for key "${key}" after ${MAX_RETRIES} retries. Error: ${err.message}`);
             }
             throw err;
