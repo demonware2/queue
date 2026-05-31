@@ -79,7 +79,8 @@ class DelayedInputService {
 
             const response = await this.webhookService.send(webhookPayload);
             if (!response || response.status === 'failed') {
-                const errMsg = (response && response.error_message) || 'Webhook service returned failed status';
+                const bodyDetail = (response && response.response_body) ? `: ${response.response_body}` : '';
+                const errMsg = ((response && response.error_message) || 'Webhook service returned failed status') + bodyDetail;
                 throw new Error(errMsg);
             }
 
