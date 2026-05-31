@@ -2,6 +2,8 @@ const WebhookService = require('./webhook-service');
 
 const RESTORE_LOCK_KEY = 'delayed_input:restore_lock';
 const RESTORE_LOCK_TTL_MS = 30000; // 30 seconds
+const MAX_RETRIES = 5;
+const RETRY_DELAY_MS = 10000; // 10 seconds retry delay
 
 class DelayedInputService {
     constructor(redis) {
@@ -22,7 +24,7 @@ class DelayedInputService {
         const delayMinutes = parseFloat(delay) || 0;
         const delayMs = delayMinutes * 60 * 1000;
         const scheduledTime = Date.now() + delayMs;
-        const stored = JSON.stringify({ scheduledTime, payload });
+        const stored = JSON.stringify({ scheduledTime, payload, retryCount: 0 });
 
         const set = await this.redis.set(activeKey, stored, 'NX');
 
@@ -44,18 +46,25 @@ class DelayedInputService {
 
     async triggerWebhook(payload, activeKey) {
         const { key, webhook_url, secret, event, headers } = payload;
-
+        const valStr = await this.redis.get(activeKey);
         const deleted = await this.redis.del(activeKey);
-        if (deleted === 0) {
+        if (deleted === 0 || !valStr) {
             console.log(`[DelayedInputService] Trigger for key "${key}" was already claimed by another worker. Skipping.`);
             return;
+        }
+
+        let retryCount = 0;
+        try {
+            const data = JSON.parse(valStr);
+            retryCount = data.retryCount || 0;
+        } catch (e) {
+            retryCount = 0;
         }
 
         try {
             const exists = await this.redis.exists(key);
             if (!exists) {
-                console.log(`[DelayedInputService] Redis key "${key}" has no data/does not exist. Skipping webhook trigger.`);
-                return;
+                throw new Error(`Redis key "${key}" has no data/does not exist yet.`);
             }
 
             console.log(`[DelayedInputService] Redis key "${key}" contains data. Triggering webhook to: ${webhook_url}`);
@@ -68,16 +77,47 @@ class DelayedInputService {
                 headers
             };
 
-            await this.webhookService.send(webhookPayload);
+            const response = await this.webhookService.send(webhookPayload);
+            if (!response || response.status === 'failed') {
+                const errMsg = (response && response.error_message) || 'Webhook service returned failed status';
+                throw new Error(errMsg);
+            }
+
             console.log(`[DelayedInputService] Webhook triggered successfully for key: ${key}`);
         } catch (err) {
-            const retryStored = JSON.stringify({
-                scheduledTime: Date.now(),
-                payload,
-                _retryOf: key
-            });
-            await this.redis.set(activeKey, retryStored, 'NX', 'EX', 300);
-            console.error(`[DelayedInputService] Webhook trigger failed for key "${key}". Marked for inspection.`, err);
+            if (retryCount < MAX_RETRIES) {
+                const nextRetryCount = retryCount + 1;
+                const nextRetryDelay = RETRY_DELAY_MS;
+                const scheduledTime = Date.now() + nextRetryDelay;
+                
+                const retryStored = JSON.stringify({
+                    scheduledTime,
+                    payload,
+                    retryCount: nextRetryCount
+                });
+
+                const ttlSeconds = Math.ceil(nextRetryDelay / 1000) + 3600;
+                await this.redis.set(activeKey, retryStored, 'EX', ttlSeconds);
+                
+                console.warn(`[DelayedInputService] Trigger for key "${key}" failed (${err.message}). Rescheduling retry #${nextRetryCount} in ${nextRetryDelay / 1000} seconds.`);
+
+                setTimeout(() => {
+                    this.triggerWebhook(payload, activeKey).catch((retryErr) => {
+                        console.error(`[DelayedInputService] Error executing retry trigger for key "${key}":`, retryErr);
+                    });
+                }, nextRetryDelay);
+            } else {
+                const failedStored = JSON.stringify({
+                    scheduledTime: Date.now(),
+                    payload,
+                    _retryOf: key,
+                    failedPermanently: true,
+                    error: err.message
+                });
+
+                await this.redis.set(activeKey, failedStored, 'EX', 3600);
+                console.error(`[DelayedInputService] Webhook trigger failed permanently for key "${key}" after ${MAX_RETRIES} retries. Error: ${err.message}`);
+            }
             throw err;
         }
     }
