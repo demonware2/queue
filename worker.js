@@ -1,3 +1,6 @@
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+
 const Redis = require('ioredis');
 const config = require('./config');
 const axios = require('axios');
@@ -218,6 +221,19 @@ async function processJob(job, preclaimed = false) {
             result = await telegramService.sendMessage(job.payload);
         } else if (job.type === config.jobTypes.PUSH_NOTIFICATION && pushNotificationService) {
             result = await pushNotificationService.sendNotification(job.payload);
+        } else if (job.type === config.jobTypes.AI_SANDBOX) {
+            logger.info(`Worker ${workerId} forwarding job ${job.id} to AI Sandbox...`);
+            const sandboxUrl = process.env.AI_SANDBOX_URL || 'http://localhost:8085/execute';
+            const response = await axios.post(sandboxUrl, {
+                task_id: String(job.id),
+                action: job.payload.action || 'run_prompt',
+                api_slug: job.payload.api_slug,
+                prompt: job.payload.prompt,
+                data: job.payload.data
+            }, {
+                timeout: 120000
+            });
+            result = response.data;
         } else {
             const endpoint = API_ENDPOINTS[job.type];
             if (!endpoint) {

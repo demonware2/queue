@@ -22,6 +22,7 @@ const config = {
     DELAYED_INPUT: 'delayed_input',
     TELEGRAM: 'telegram',
     PUSH_NOTIFICATION: 'push_notification',
+    AI_SANDBOX: 'ai_sandbox',
   },
   workerSettings: {
     defaultCount: 1,
