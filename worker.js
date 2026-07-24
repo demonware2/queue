@@ -13,6 +13,7 @@ const WebhookService = require('./services/webhook-service');
 const DelayedInputService = require('./services/delayed-input-service');
 const TelegramService = require('./services/telegram-service');
 const PushNotificationService = require('./services/push-notification-service');
+const BackupService = require('./services/backup-service');
 const logger = require('./services/logger');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
@@ -37,6 +38,7 @@ let webhookService = null;
 let delayedInputService = null;
 let telegramService = null;
 let pushNotificationService = null;
+let backupService = null;
 let keepRunning = true;
 
 function safeStringify(value, opts = {}) {
@@ -99,6 +101,10 @@ if (workerType === config.jobTypes.EMAIL) {
 
 if (workerType === config.jobTypes.CRONJOB) {
     cronjobService = new CronjobService();
+}
+
+if (workerType === config.jobTypes.BACKUP) {
+    backupService = new BackupService();
 }
 
 if (workerType === config.jobTypes.WHATSAPP) {
@@ -164,7 +170,20 @@ async function processJob(job, preclaimed = false) {
 
         let result;
 
-        if (job.type === config.jobTypes.CRONJOB && cronjobService) {
+        if (job.type === config.jobTypes.BACKUP && backupService) {
+            logger.info(`Starting backup execution for name: ${job.payload.name}`);
+            try {
+                result = await backupService.runBackup(job.payload);
+
+                logger.info(`Backup execution completed with exit code: ${result.exitCode}`);
+                if (result.exitCode !== 0) {
+                    throw new Error(`Backup script exited with non-zero code ${result.exitCode}. Error: ${result.error}`);
+                }
+            } catch (backupError) {
+                logger.warn(`Error executing backup: ${backupError.message}`);
+                throw backupError;
+            }
+        } else if (job.type === config.jobTypes.CRONJOB && cronjobService) {
             logger.info(`Starting cronjob execution for script: ${job.payload.script}`);
             try {
                 result = await cronjobService.runScript(job.payload);
@@ -428,6 +447,14 @@ async function main() {
                 throw new Error('Failed to initialize cronjob service');
             }
             logger.info(`Worker ${workerId}: Cronjob service initialized successfully`);
+        }
+
+        if (workerType === config.jobTypes.BACKUP && backupService) {
+            const initialized = await backupService.init();
+            if (!initialized) {
+                throw new Error('Failed to initialize backup service');
+            }
+            logger.info(`Worker ${workerId}: Backup service initialized successfully`);
         }
 
         logger.info(`Worker ${workerId} (${workerType}) started (BRPOP consumption)`);
