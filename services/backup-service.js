@@ -15,14 +15,16 @@ class BackupService {
   async runBackup(payload) {
     const { name, backup_type, storage = 'local' } = payload;
     const sparkPath = process.env.BACKUP_SPARK_PATH || '/var/www/siroum/spark';
-    const timeoutPath = process.env.BACKUP_TIMEOUT_PATH || '';
+    const commandPrefix = process.env.BACKUP_COMMAND_PREFIX || '';
 
     let commandScript;
     let commandArgs = [];
 
-    if (timeoutPath) {
-      commandScript = timeoutPath;
-      commandArgs.push('1900', sparkPath);
+    if (commandPrefix.trim()) {
+      const prefixParts = commandPrefix.trim().split(/\s+/);
+      commandScript = prefixParts[0];
+      commandArgs = prefixParts.slice(1);
+      commandArgs.push(sparkPath);
     } else {
       commandScript = sparkPath;
     }
