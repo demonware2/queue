@@ -95,8 +95,25 @@ function setupEmailHealthCheck() {
     }
 }
 
+let configSub = null;
+
 if (workerType === config.jobTypes.EMAIL) {
     emailService = new EmailService();
+    configSub = redis.duplicate();
+    configSub.subscribe('config:email-updated');
+    configSub.on('message', async (channel, message) => {
+        if (channel === 'config:email-updated' && emailService) {
+            try {
+                const data = JSON.parse(message);
+                const targetModule = data.module || 'Global';
+                logger.info(`Worker ${workerId}: Received email config reload event for module '${targetModule}'`);
+                await emailService.init(targetModule);
+                logger.info(`Worker ${workerId}: Email config for module '${targetModule}' re-initialized successfully`);
+            } catch (err) {
+                logger.warn(`Worker ${workerId}: Error reloading email config: ${err.message}`);
+            }
+        }
+    });
 }
 
 if (workerType === config.jobTypes.CRONJOB) {
@@ -477,6 +494,9 @@ process.on('SIGTERM', async () => {
         await cronjobService.shutdown();
     }
     keepRunning = false;
+    if (configSub) {
+        await configSub.quit();
+    }
     await redis.quit();
     process.exit(0);
 });
@@ -493,6 +513,9 @@ process.on('SIGINT', async () => {
         await cronjobService.shutdown();
     }
     keepRunning = false;
+    if (configSub) {
+        await configSub.quit();
+    }
     await redis.quit();
     process.exit(0);
 });

@@ -10,7 +10,7 @@ class QueueService {
   }
 
   async init() {
-    await this.subscriber.subscribe('worker:job-complete', 'worker:job-failed');
+    await this.subscriber.subscribe(...['worker:job-complete', 'worker:job-failed', 'config:email-updated']);
     
     this.subscriber.on('message', (channel, message) => {
       let data;
@@ -19,6 +19,10 @@ class QueueService {
       } catch (e) {
         console.warn(`QueueService: failed to parse message on ${channel}: ${e.message}`);
         return;
+      }
+
+      if (channel === 'config:email-updated') {
+        console.log(`QueueService: Received email config reload trigger for module '${data.module || 'Global'}'`);
       }
 
       if (channel === 'worker:job-complete' && this.handlers.onJobComplete) {
