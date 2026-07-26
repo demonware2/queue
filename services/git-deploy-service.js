@@ -15,18 +15,34 @@ class GitDeployService {
 
   async runGitDeploy(payload) {
     const { branch } = payload;
-    const sparkPath = process.env.SIROUM_SPARK_PATH || '/var/www/siroum/spark';
+    const sparkPath = process.env.SIROUM_SPARK_PATH || process.env.BACKUP_SPARK_PATH || '/var/www/siroum/spark';
+    const commandPrefix = process.env.GIT_DEPLOY_COMMAND_PREFIX || process.env.BACKUP_COMMAND_PREFIX || '';
 
     if (!branch) {
       throw new Error('Branch name is required for git deployment job.');
     }
 
-    console.log(`[GitDeployService] Triggering deployment for branch "${branch}" via spark CLI...`);
+    let commandScript;
+    let commandArgs = [];
+
+    if (commandPrefix.trim()) {
+      const prefixParts = commandPrefix.trim().split(/\s+/);
+      commandScript = prefixParts[0];
+      commandArgs = prefixParts.slice(1);
+      commandArgs.push(sparkPath);
+    } else {
+      commandScript = 'php';
+      commandArgs = [sparkPath];
+    }
+
+    commandArgs.push('git-deploy:worker');
+
+    console.log(`[GitDeployService] Running git deploy command: ${commandScript} ${commandArgs.join(' ')}`);
 
     let stdoutChunks = [];
     let stderrChunks = [];
 
-    const childProcess = spawn('php', [sparkPath, 'git-deploy:worker'], {
+    const childProcess = spawn(commandScript, commandArgs, {
       stdio: 'pipe',
       shell: true,
       env: {
