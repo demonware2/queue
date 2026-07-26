@@ -15,7 +15,7 @@ class GitDeployService {
 
   async runGitDeploy(payload) {
     const { branch } = payload;
-    const sparkPath = process.env.SIROUM_SPARK_PATH || process.env.BACKUP_SPARK_PATH || '/var/www/siroum/spark';
+    const sparkPath = process.env.SIROUM_SPARK_PATH || process.env.BACKUP_SPARK_PATH || '/var/www/html/biroumum/spark';
     const commandPrefix = process.env.GIT_DEPLOY_COMMAND_PREFIX || process.env.BACKUP_COMMAND_PREFIX || '';
 
     if (!branch) {
