@@ -35,7 +35,7 @@ class GitDeployService {
       commandArgs = [sparkPath];
     }
 
-    commandArgs.push('git-deploy:worker');
+    commandArgs.push('git-deploy:worker', '--branch', branch);
 
     console.log(`[GitDeployService] Running git deploy command: ${commandScript} ${commandArgs.join(' ')}`);
 
