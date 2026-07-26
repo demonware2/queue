@@ -14,6 +14,7 @@ const DelayedInputService = require('./services/delayed-input-service');
 const TelegramService = require('./services/telegram-service');
 const PushNotificationService = require('./services/push-notification-service');
 const BackupService = require('./services/backup-service');
+const GitDeployService = require('./services/git-deploy-service');
 const logger = require('./services/logger');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
@@ -39,6 +40,7 @@ let delayedInputService = null;
 let telegramService = null;
 let pushNotificationService = null;
 let backupService = null;
+let gitDeployService = null;
 let keepRunning = true;
 
 function safeStringify(value, opts = {}) {
@@ -148,6 +150,10 @@ if (workerType === config.jobTypes.PUSH_NOTIFICATION) {
     pushNotificationService = new PushNotificationService(redis);
 }
 
+if (workerType === config.jobTypes.GIT_DEPLOY) {
+    gitDeployService = new GitDeployService(redis);
+}
+
 const API_ENDPOINTS = {
     [config.jobTypes.SMS]: 'http://localhost/ci4/api/sms',
     [config.jobTypes.NOTIFICATION]: 'http://localhost/ci4/api/notification',
@@ -187,7 +193,19 @@ async function processJob(job, preclaimed = false) {
 
         let result;
 
-        if (job.type === config.jobTypes.BACKUP && backupService) {
+        if (job.type === config.jobTypes.GIT_DEPLOY && gitDeployService) {
+            logger.info(`Starting Git deployment execution for branch: ${job.payload.branch}`);
+            try {
+                result = await gitDeployService.runGitDeploy(job.payload);
+                logger.info(`Git deployment execution completed with exit code: ${result.exitCode}`);
+                if (result.exitCode !== 0) {
+                    throw new Error(`Git deployment script exited with non-zero code ${result.exitCode}. Error: ${result.error}`);
+                }
+            } catch (deployError) {
+                logger.warn(`Error executing Git deployment: ${deployError.message}`);
+                throw deployError;
+            }
+        } else if (job.type === config.jobTypes.BACKUP && backupService) {
             logger.info(`Starting backup execution for name: ${job.payload.name}`);
             try {
                 result = await backupService.runBackup(job.payload);
@@ -472,6 +490,14 @@ async function main() {
                 throw new Error('Failed to initialize backup service');
             }
             logger.info(`Worker ${workerId}: Backup service initialized successfully`);
+        }
+
+        if (workerType === config.jobTypes.GIT_DEPLOY && gitDeployService) {
+            const initialized = await gitDeployService.init();
+            if (!initialized) {
+                throw new Error('Failed to initialize git deploy service');
+            }
+            logger.info(`Worker ${workerId}: Git deploy service initialized successfully`);
         }
 
         logger.info(`Worker ${workerId} (${workerType}) started (BRPOP consumption)`);

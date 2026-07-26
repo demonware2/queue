@@ -24,6 +24,7 @@ const config = {
     PUSH_NOTIFICATION: 'push_notification',
     AI_SANDBOX: 'ai_sandbox',
     BACKUP: 'backup',
+    GIT_DEPLOY: 'git_deploy',
   },
   workerSettings: {
     defaultCount: 1,
