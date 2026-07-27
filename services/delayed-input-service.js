@@ -26,7 +26,8 @@ class DelayedInputService {
         const scheduledTime = Date.now() + delayMs;
         const stored = JSON.stringify({ scheduledTime, payload, retryCount: 0 });
 
-        const set = await this.redis.set(activeKey, stored, 'NX');
+        const ttlSeconds = Math.ceil(delayMs / 1000) + 3600; // Delay + 1 hour safety margin
+        const set = await this.redis.set(activeKey, stored, 'EX', ttlSeconds, 'NX');
 
         if (!set) {
             console.log(`[DelayedInputService] Key "${key}" already scheduled. Skipping to preserve initial delay.`);
