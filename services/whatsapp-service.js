@@ -30,7 +30,7 @@ class WhatsAppService {
 
         this.wablasToken = process.env.WABLAS_TOKEN || '';
         this.wablasSecret = process.env.WABLAS_SECRET || '';
-        this.wablasBaseUrl = 'https://bdg.wablas.com/api';
+        this.wablasBaseUrl = process.env.WABLAS_BASE_URL || 'https://bdg.wablas.com/api';
     }
 
     async _checkRateLimit() {
@@ -365,7 +365,11 @@ class WhatsAppService {
     }
 
     async _sendViaWablas(target, message, isGroup = false) {
-        if (!this.wablasToken || !this.wablasSecret) {
+        const token = process.env.WABLAS_TOKEN || this.wablasToken;
+        const secret = process.env.WABLAS_SECRET || this.wablasSecret;
+        const baseUrl = process.env.WABLAS_BASE_URL || this.wablasBaseUrl || 'https://bdg.wablas.com/api';
+
+        if (!token || !secret) {
             throw new Error('Wablas credentials not configured');
         }
 
@@ -374,7 +378,7 @@ class WhatsAppService {
             const sentTime = new Date().toLocaleTimeString();
 
             if (isGroup) {
-                const url = `${this.wablasBaseUrl}/send-message?phone=${encodeURIComponent(target)}&message=${encodeURIComponent(message)}&token=${this.wablasToken}`;
+                const url = `${baseUrl}/send-message?phone=${encodeURIComponent(target)}&message=${encodeURIComponent(message)}&token=${token}`;
 
                 response = await axios.get(url, {
                     timeout: 30000,
@@ -393,10 +397,10 @@ class WhatsAppService {
                     ]
                 };
 
-                response = await axios.post(`${this.wablasBaseUrl}/v2/send-message`, payload, {
+                response = await axios.post(`${baseUrl}/v2/send-message`, payload, {
                     timeout: 30000,
                     headers: {
-                        'Authorization': `${this.wablasToken}.${this.wablasSecret}`,
+                        'Authorization': `${token}.${secret}`,
                         'Content-Type': 'application/json'
                     }
                 });
