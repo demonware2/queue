@@ -5,7 +5,7 @@ class Worker {
 
   async create(type) {
     const result = await this.db.run(
-      `INSERT INTO workers (type, status, last_active) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+      `INSERT INTO workers (type, status, last_active, created_at, updated_at) VALUES (?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'), datetime('now', 'localtime'))`,
       [type, 'idle']
     );
     return result.lastID;
@@ -20,7 +20,7 @@ class Worker {
 
   async updateStatus(id, status) {
     await this.db.run(
-      `UPDATE workers SET status = ?, last_active = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE workers SET status = ?, last_active = datetime('now', 'localtime'), updated_at = datetime('now', 'localtime') WHERE id = ?`,
       [status, id]
     );
   }

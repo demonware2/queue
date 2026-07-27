@@ -11,8 +11,8 @@ class Job {
         } = options;
 
         const result = await this.db.run(
-            `INSERT INTO jobs (type, payload, status, is_retry_enabled, retry_delay, retry_count) 
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO jobs (type, payload, status, is_retry_enabled, retry_delay, retry_count, created_at, updated_at) 
+             VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))`,
             [type, JSON.stringify(payload), 'pending', isRetryEnabled, retryDelay, retryCount]
         );
         return result.lastID;
@@ -24,7 +24,7 @@ class Job {
              WHERE status = 'failed' 
                AND is_retry_enabled = 1
                AND attempts < retry_count
-               AND next_attempt_at <= CURRENT_TIMESTAMP`
+               AND next_attempt_at <= datetime('now', 'localtime')`
         );
     }
 
@@ -33,7 +33,7 @@ class Job {
             const job = await this.db.get(
                 `SELECT * FROM jobs 
                  WHERE status = 'pending' AND type = ? 
-                 AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP)
+                 AND (next_attempt_at IS NULL OR next_attempt_at <= datetime('now', 'localtime'))
                  ORDER BY created_at ASC LIMIT 1`,
                 [type]
             );
@@ -43,7 +43,7 @@ class Job {
             }
 
             const updateResult = await this.db.run(
-                `UPDATE jobs SET status = 'processing', updated_at = CURRENT_TIMESTAMP
+                `UPDATE jobs SET status = 'processing', updated_at = datetime('now', 'localtime')
                  WHERE id = ? AND status = 'pending'`,
                 [job.id]
             );
@@ -70,26 +70,28 @@ class Job {
             const { manageRetry = true } = options ?? {};
 
             if (manageRetry && job.is_retry_enabled && job.attempts < job.retry_count) {
-                const nextAttemptAt = new Date(Date.now() + job.retry_delay * 60 * 60 * 1000).toISOString();
+                const d = new Date(Date.now() + job.retry_delay * 60 * 60 * 1000);
+                const pad = (n) => String(n).padStart(2, '0');
+                const nextAttemptAt = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
                 await this.db.run(
-                    `UPDATE jobs SET status = ?, worker_id = ?, result = ?, attempts = attempts + 1, next_attempt_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                    `UPDATE jobs SET status = ?, worker_id = ?, result = ?, attempts = attempts + 1, next_attempt_at = ?, updated_at = datetime('now', 'localtime') WHERE id = ?`,
                     ['failed', workerId, serializedResult, nextAttemptAt, id]
                 );
                 console.log(`Job ${id} scheduled for retry. Attempt: ${job.attempts + 1} of ${job.retry_count}. Next attempt at: ${nextAttemptAt}`);
             } else if (manageRetry) {
                 await this.db.run(
-                    `UPDATE jobs SET status = ?, worker_id = ?, result = ?, next_attempt_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                    `UPDATE jobs SET status = ?, worker_id = ?, result = ?, next_attempt_at = NULL, updated_at = datetime('now', 'localtime') WHERE id = ?`,
                     ['failed', workerId, serializedResult, id]
                 );
             } else {
                 await this.db.run(
-                    `UPDATE jobs SET status = ?, worker_id = ?, result = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                    `UPDATE jobs SET status = ?, worker_id = ?, result = ?, updated_at = datetime('now', 'localtime') WHERE id = ?`,
                     ['failed', workerId, serializedResult, id]
                 );
             }
         } else {
             await this.db.run(
-                `UPDATE jobs SET status = ?, worker_id = ?, result = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                `UPDATE jobs SET status = ?, worker_id = ?, result = ?, updated_at = datetime('now', 'localtime') WHERE id = ?`,
                 [status, workerId, serializedResult, id]
             );
         }
@@ -101,7 +103,7 @@ class Job {
 
     async updateRetrySchedule(id, attempts, nextAttemptAt) {
         await this.db.run(
-            `UPDATE jobs SET attempts = ?, next_attempt_at = ?, status = 'pending', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+            `UPDATE jobs SET attempts = ?, next_attempt_at = ?, status = 'pending', updated_at = datetime('now', 'localtime') WHERE id = ?`,
             [attempts, nextAttemptAt, id]
         );
     }
@@ -109,7 +111,7 @@ class Job {
     async claimIfPending(id) {
         try {
             const result = await this.db.run(
-                `UPDATE jobs SET status = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'`,
+                `UPDATE jobs SET status = 'processing', updated_at = datetime('now', 'localtime') WHERE id = ? AND status = 'pending'`,
                 [id]
             );
             return result.changes > 0;

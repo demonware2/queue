@@ -7,6 +7,11 @@ const util = require('util');
 const exec = util.promisify(require('child_process').exec);
 const sqlite3 = require('sqlite3').verbose();
 
+function formatLocalDateTime(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 class CronjobService {
   constructor() {
     this.processes = {};
@@ -349,7 +354,7 @@ class CronjobService {
         }
 
         const isRunning = status === 'running' ? 1 : 0;
-        const startRunning = status === 'running' ? new Date().toISOString() : null;
+        const startRunning = status === 'running' ? formatLocalDateTime() : null;
 
         if (status === 'success' || status === 'failed') {
           console.log(`Updating task ${taskId} status to ${status} (completion)`);
@@ -365,7 +370,7 @@ class CronjobService {
                 return reject(err);
               }
 
-              const endTime = new Date().toISOString();
+              const endTime = formatLocalDateTime();
 
               db.get(
                 `SELECT id FROM task_scheduler_log 
@@ -395,7 +400,7 @@ class CronjobService {
                       }
                     );
                   } else {
-                    const startTime = new Date(Date.now() - 1000).toISOString();
+                    const startTime = formatLocalDateTime(new Date(Date.now() - 1000));
 
                     db.run(
                       `INSERT INTO task_scheduler_log
@@ -430,7 +435,7 @@ class CronjobService {
                 return reject(err);
               }
 
-              const startTime = new Date().toISOString();
+              const startTime = formatLocalDateTime();
 
               db.get(
                 `SELECT id FROM task_scheduler_log 

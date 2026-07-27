@@ -22,8 +22,8 @@ async function initDatabase() {
             status TEXT NOT NULL,
             is_active INTEGER DEFAULT 1,
             last_active DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
         );
 
         CREATE TABLE IF NOT EXISTS jobs (
@@ -38,8 +38,8 @@ async function initDatabase() {
             is_retry_enabled BOOLEAN DEFAULT 0,
             retry_delay INTEGER DEFAULT 1,
             retry_count INTEGER DEFAULT 5,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (worker_id) REFERENCES workers (id)
         );
 
