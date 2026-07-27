@@ -377,34 +377,27 @@ class WhatsAppService {
             let response;
             const sentTime = new Date().toLocaleTimeString();
 
-            if (isGroup) {
-                const url = `${baseUrl}/send-message?phone=${encodeURIComponent(target)}&message=${encodeURIComponent(message)}&token=${token}`;
+            const cleanBaseUrl = baseUrl.replace(/\/v2\/?$/, '').replace(/\/$/, '');
+            const v2Url = `${cleanBaseUrl}/v2/send-message`;
+            const authHeader = secret ? `${token}.${secret}` : token;
 
-                response = await axios.get(url, {
-                    timeout: 30000,
-                    headers: {
-                        'Content-Type': 'application/json'
+            const payload = {
+                data: [
+                    {
+                        phone: target,
+                        message: message,
+                        isGroup: isGroup ? 'true' : 'false'
                     }
-                });
-            } else {
-                const payload = {
-                    data: [
-                        {
-                            phone: target,
-                            message: message,
-                            isGroup: 'false'
-                        }
-                    ]
-                };
+                ]
+            };
 
-                response = await axios.post(`${baseUrl}/v2/send-message`, payload, {
-                    timeout: 30000,
-                    headers: {
-                        'Authorization': `${token}.${secret}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-            }
+            response = await axios.post(v2Url, payload, {
+                timeout: 30000,
+                headers: {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json'
+                }
+            });
 
             if (response.status === 200) {
                 console.log(`[WABLAS] ✅ ${isGroup ? 'Group message' : 'Message'} sent to ${target} at ${sentTime}`);
