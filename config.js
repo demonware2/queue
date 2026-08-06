@@ -25,6 +25,7 @@ const config = {
     AI_SANDBOX: 'ai_sandbox',
     BACKUP: 'backup',
     GIT_DEPLOY: 'git_deploy',
+    WEB_CRAWL: 'web_crawl',
   },
   workerSettings: {
     defaultCount: 1,

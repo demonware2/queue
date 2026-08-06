@@ -15,6 +15,7 @@ const TelegramService = require('./services/telegram-service');
 const PushNotificationService = require('./services/push-notification-service');
 const BackupService = require('./services/backup-service');
 const GitDeployService = require('./services/git-deploy-service');
+const WebCrawlService = require('./services/web-crawl-service');
 const logger = require('./services/logger');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
@@ -41,6 +42,7 @@ let telegramService = null;
 let pushNotificationService = null;
 let backupService = null;
 let gitDeployService = null;
+let webCrawlService = null;
 let keepRunning = true;
 
 function safeStringify(value, opts = {}) {
@@ -152,6 +154,10 @@ if (workerType === config.jobTypes.PUSH_NOTIFICATION) {
 
 if (workerType === config.jobTypes.GIT_DEPLOY) {
     gitDeployService = new GitDeployService(redis);
+}
+
+if (workerType === config.jobTypes.WEB_CRAWL) {
+    webCrawlService = new WebCrawlService();
 }
 
 const API_ENDPOINTS = {
@@ -275,6 +281,18 @@ async function processJob(job, preclaimed = false) {
             result = await telegramService.sendMessage(job.payload);
         } else if (job.type === config.jobTypes.PUSH_NOTIFICATION && pushNotificationService) {
             result = await pushNotificationService.sendNotification(job.payload);
+        } else if (job.type === config.jobTypes.WEB_CRAWL && webCrawlService) {
+            logger.info(`Worker ${workerId} starting web crawl for: ${job.payload.uuid || job.payload.batch_id}`);
+            try {
+                result = await webCrawlService.runCrawl(job.payload);
+                logger.info(`Web crawl execution completed with exit code: ${result.exitCode}`);
+                if (result.exitCode !== 0) {
+                    throw new Error(`Web crawl script exited with non-zero code ${result.exitCode}. Error: ${result.error}`);
+                }
+            } catch (crawlError) {
+                logger.warn(`Error executing web crawl: ${crawlError.message}`);
+                throw crawlError;
+            }
         } else if (job.type === config.jobTypes.AI_SANDBOX) {
             logger.info(`Worker ${workerId} forwarding job ${job.id} to AI Sandbox...`);
             const sandboxUrl = process.env.AI_SANDBOX_URL || 'http://localhost:8085/execute';
@@ -402,6 +420,11 @@ async function brpopLoop() {
                         logger.debug(`Breathing room: waiting 2 seconds before next job`);
                         await new Promise(r => setTimeout(r, 2000));
                     }
+
+                    if (workerType === config.jobTypes.WEB_CRAWL) {
+                        logger.debug(`Breathing room: waiting 3 seconds before next crawl job`);
+                        await new Promise(r => setTimeout(r, 3000));
+                    }
                 } catch (claimErr) {
                     logger.warn(`Claim request failed for job ${job.id}: ${claimErr.message}`);
                 }
@@ -498,6 +521,14 @@ async function main() {
                 throw new Error('Failed to initialize git deploy service');
             }
             logger.info(`Worker ${workerId}: Git deploy service initialized successfully`);
+        }
+
+        if (workerType === config.jobTypes.WEB_CRAWL && webCrawlService) {
+            const initialized = await webCrawlService.init();
+            if (!initialized) {
+                throw new Error('Failed to initialize web crawl service');
+            }
+            logger.info(`Worker ${workerId}: Web crawl service initialized successfully`);
         }
 
         logger.info(`Worker ${workerId} (${workerType}) started (BRPOP consumption)`);
