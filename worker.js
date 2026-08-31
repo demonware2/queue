@@ -16,6 +16,8 @@ const PushNotificationService = require('./services/push-notification-service');
 const BackupService = require('./services/backup-service');
 const GitDeployService = require('./services/git-deploy-service');
 const WebCrawlService = require('./services/web-crawl-service');
+const ZoomDriveService = require('./services/zoom-drive-service');
+const YouTubeService = require('./services/youtube-service');
 const logger = require('./services/logger');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
@@ -43,6 +45,8 @@ let pushNotificationService = null;
 let backupService = null;
 let gitDeployService = null;
 let webCrawlService = null;
+let zoomDriveService = null;
+let youTubeService = null;
 let keepRunning = true;
 
 function safeStringify(value, opts = {}) {
@@ -160,6 +164,14 @@ if (workerType === config.jobTypes.WEB_CRAWL) {
     webCrawlService = new WebCrawlService();
 }
 
+if (workerType === config.jobTypes.ZOOM_SYNC_DRIVE) {
+    zoomDriveService = new ZoomDriveService();
+}
+
+if (workerType === config.jobTypes.YOUTUBE_UPLOAD) {
+    youTubeService = new YouTubeService(redis);
+}
+
 const API_ENDPOINTS = {
     [config.jobTypes.SMS]: 'http://localhost/ci4/api/sms',
     [config.jobTypes.NOTIFICATION]: 'http://localhost/ci4/api/notification',
@@ -249,6 +261,18 @@ async function processJob(job, preclaimed = false) {
                 logger.warn(`Error running script: ${scriptError.message}`);
                 throw scriptError;
             }
+        } else if (job.type === config.jobTypes.ZOOM_SYNC_DRIVE) {
+            if (!zoomDriveService) {
+                zoomDriveService = new ZoomDriveService();
+            }
+            logger.info('Starting Zoom Drive Sync for recording: ' + (job.payload ? (job.payload.recording_id || job.payload.file_id) : ''));
+            result = await zoomDriveService.runSync(job.payload);
+        } else if (job.type === config.jobTypes.YOUTUBE_UPLOAD) {
+            if (!youTubeService) {
+                youTubeService = new YouTubeService(redis);
+            }
+            logger.info('Starting YouTube Upload for recording: ' + (job.payload ? job.payload.recording_id : ''));
+            result = await youTubeService.runUpload(job.payload);
         } else if (job.type === config.jobTypes.EMAIL && emailService) {
 
             if (!job.payload.to || !job.payload.subject || !job.payload.html) {

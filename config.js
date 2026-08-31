@@ -26,6 +26,8 @@ const config = {
     BACKUP: 'backup',
     GIT_DEPLOY: 'git_deploy',
     WEB_CRAWL: 'web_crawl',
+    ZOOM_SYNC_DRIVE: 'zoom_sync_drive',
+    YOUTUBE_UPLOAD: 'youtube_upload',
   },
   workerSettings: {
     defaultCount: 1,
@@ -34,6 +36,9 @@ const config = {
   whatsapp: {
     limitCount: parseInt(process.env.WHATSAPP_LIMIT_COUNT) || 80,
     limitWindowHours: parseInt(process.env.WHATSAPP_LIMIT_WINDOW_HOURS) || 6,
+  },
+  youtube: {
+    maxDailyUploads: parseInt(process.env.YOUTUBE_DAILY_UPLOAD_LIMIT) || 100,
   }
 };
 
