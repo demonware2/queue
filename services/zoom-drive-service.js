@@ -13,26 +13,25 @@ class ZoomDriveService {
 
   async runSync(payload) {
     const { recording_id, file_id } = payload || {};
-    const sparkPath = process.env.SIROUM_SPARK_PATH || '/var/www/html/biroumum/spark';
+    const sparkPath = process.env.SIROUM_SPARK_PATH || process.env.BACKUP_SPARK_PATH || '/var/www/html/biroumum/spark';
+    const commandPrefix = (process.env.BACKUP_COMMAND_PREFIX || process.env.GIT_DEPLOY_COMMAND_PREFIX || 'php83').replace(/^["']|["']$/g, '').trim();
 
-    let commandScript = 'php';
-    let commandArgs = [sparkPath, 'zoom:sync-drive'];
-
+    let fullCommand = `${commandPrefix} ${sparkPath} zoom:sync-drive`;
     if (recording_id) {
-      commandArgs.push('--recording_id', String(recording_id));
+      fullCommand += ` --recording_id ${recording_id}`;
     }
     if (file_id) {
-      commandArgs.push('--file_id', String(file_id));
+      fullCommand += ` --file_id ${file_id}`;
     }
 
-    console.log('[ZoomDriveService] Running:', commandScript, commandArgs.join(' '));
+    console.log('[ZoomDriveService] Running:', fullCommand);
 
     let stdoutChunks = [];
     let stderrChunks = [];
 
-    const childProcess = spawn(commandScript, commandArgs, {
+    const childProcess = spawn(fullCommand, [], {
       stdio: 'pipe',
-      shell: false
+      shell: true
     });
 
     const jobId = 'zoom_drive_' + (recording_id || file_id || Date.now());

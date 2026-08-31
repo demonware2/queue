@@ -56,24 +56,19 @@ class YouTubeService {
 
     await this.checkQuota();
 
-    const sparkPath = process.env.SIROUM_SPARK_PATH || '/var/www/html/biroumum/spark';
+    const sparkPath = process.env.SIROUM_SPARK_PATH || process.env.BACKUP_SPARK_PATH || '/var/www/html/biroumum/spark';
+    const commandPrefix = (process.env.BACKUP_COMMAND_PREFIX || process.env.GIT_DEPLOY_COMMAND_PREFIX || 'php83').replace(/^["']|["']$/g, '').trim();
 
-    let commandScript = 'php';
-    let commandArgs = [
-      sparkPath,
-      'zoom:youtube-upload',
-      '--recording_id', String(recording_id),
-      '--privacy', String(privacy)
-    ];
+    let fullCommand = `${commandPrefix} ${sparkPath} zoom:youtube-upload --recording_id ${recording_id} --privacy ${privacy}`;
 
-    console.log('[YouTubeService] Running:', commandScript, commandArgs.join(' '));
+    console.log('[YouTubeService] Running:', fullCommand);
 
     let stdoutChunks = [];
     let stderrChunks = [];
 
-    const childProcess = spawn(commandScript, commandArgs, {
+    const childProcess = spawn(fullCommand, [], {
       stdio: 'pipe',
-      shell: false
+      shell: true
     });
 
     const jobId = 'youtube_' + recording_id + '_' + Date.now();
