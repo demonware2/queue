@@ -56,7 +56,7 @@ class YouTubeService {
 
     await this.checkQuota();
 
-    const sparkPath = process.env.ZOOM_SPARK_PATH || '/var/www/siroum/spark';
+    const sparkPath = process.env.SIROUM_SPARK_PATH || '/var/www/html/biroumum/spark';
 
     let commandScript = 'php';
     let commandArgs = [

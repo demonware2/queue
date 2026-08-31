@@ -13,7 +13,7 @@ class ZoomDriveService {
 
   async runSync(payload) {
     const { recording_id, file_id } = payload || {};
-    const sparkPath = process.env.ZOOM_SPARK_PATH || '/var/www/siroum/spark';
+    const sparkPath = process.env.SIROUM_SPARK_PATH || '/var/www/html/biroumum/spark';
 
     let commandScript = 'php';
     let commandArgs = [sparkPath, 'zoom:sync-drive'];
