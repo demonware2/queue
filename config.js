@@ -27,6 +27,8 @@ const config = {
     GIT_DEPLOY: 'git_deploy',
     WEB_CRAWL: 'web_crawl',
     ZOOM_SYNC_DRIVE: 'zoom_sync_drive',
+    ZOOM_SCAN_CLOUD: 'zoom_scan_cloud',
+    ZOOM_RESCAN_DRIVE: 'zoom_rescan_drive',
     YOUTUBE_UPLOAD: 'youtube_upload',
   },
   workerSettings: {

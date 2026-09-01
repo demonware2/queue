@@ -17,6 +17,7 @@ const BackupService = require('./services/backup-service');
 const GitDeployService = require('./services/git-deploy-service');
 const WebCrawlService = require('./services/web-crawl-service');
 const ZoomDriveService = require('./services/zoom-drive-service');
+const ZoomScanService = require('./services/zoom-scan-service');
 const YouTubeService = require('./services/youtube-service');
 const logger = require('./services/logger');
 const sqlite3 = require('sqlite3');
@@ -46,6 +47,7 @@ let backupService = null;
 let gitDeployService = null;
 let webCrawlService = null;
 let zoomDriveService = null;
+let zoomScanService = null;
 let youTubeService = null;
 let keepRunning = true;
 
@@ -168,6 +170,10 @@ if (workerType === config.jobTypes.ZOOM_SYNC_DRIVE) {
     zoomDriveService = new ZoomDriveService();
 }
 
+if (workerType === config.jobTypes.ZOOM_SCAN_CLOUD || workerType === config.jobTypes.ZOOM_RESCAN_DRIVE) {
+    zoomScanService = new ZoomScanService();
+}
+
 if (workerType === config.jobTypes.YOUTUBE_UPLOAD) {
     youTubeService = new YouTubeService(redis);
 }
@@ -267,6 +273,18 @@ async function processJob(job, preclaimed = false) {
             }
             logger.info('Starting Zoom Drive Sync for recording: ' + (job.payload ? (job.payload.recording_id || job.payload.file_id) : ''));
             result = await zoomDriveService.runSync(job.payload);
+        } else if (job.type === config.jobTypes.ZOOM_SCAN_CLOUD) {
+            if (!zoomScanService) {
+                zoomScanService = new ZoomScanService();
+            }
+            logger.info('Starting Zoom Cloud Scan for: ' + JSON.stringify(job.payload || {}));
+            result = await zoomScanService.runScanCloud(job.payload);
+        } else if (job.type === config.jobTypes.ZOOM_RESCAN_DRIVE) {
+            if (!zoomScanService) {
+                zoomScanService = new ZoomScanService();
+            }
+            logger.info('Starting Zoom Google Drive Rescan for: ' + JSON.stringify(job.payload || {}));
+            result = await zoomScanService.runRescanDrive(job.payload);
         } else if (job.type === config.jobTypes.YOUTUBE_UPLOAD) {
             if (!youTubeService) {
                 youTubeService = new YouTubeService(redis);
