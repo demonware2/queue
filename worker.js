@@ -167,7 +167,7 @@ if (workerType === config.jobTypes.WEB_CRAWL) {
 }
 
 if (workerType === config.jobTypes.ZOOM_SYNC_DRIVE) {
-    zoomDriveService = new ZoomDriveService();
+    zoomDriveService = new ZoomDriveService(redis);
 }
 
 if (workerType === config.jobTypes.ZOOM_SCAN_CLOUD || workerType === config.jobTypes.ZOOM_RESCAN_DRIVE || workerType === config.jobTypes.ZOOM_SCAN_TRASH) {
@@ -269,7 +269,7 @@ async function processJob(job, preclaimed = false) {
             }
         } else if (job.type === config.jobTypes.ZOOM_SYNC_DRIVE) {
             if (!zoomDriveService) {
-                zoomDriveService = new ZoomDriveService();
+                zoomDriveService = new ZoomDriveService(redis);
             }
             logger.info('Starting Zoom Drive Sync for recording: ' + (job.payload ? (job.payload.recording_id || job.payload.file_id) : ''));
             result = await zoomDriveService.runSync(job.payload);
