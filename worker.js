@@ -170,7 +170,7 @@ if (workerType === config.jobTypes.ZOOM_SYNC_DRIVE) {
     zoomDriveService = new ZoomDriveService();
 }
 
-if (workerType === config.jobTypes.ZOOM_SCAN_CLOUD || workerType === config.jobTypes.ZOOM_RESCAN_DRIVE) {
+if (workerType === config.jobTypes.ZOOM_SCAN_CLOUD || workerType === config.jobTypes.ZOOM_RESCAN_DRIVE || workerType === config.jobTypes.ZOOM_SCAN_TRASH) {
     zoomScanService = new ZoomScanService();
 }
 
@@ -279,6 +279,12 @@ async function processJob(job, preclaimed = false) {
             }
             logger.info('Starting Zoom Cloud Scan for: ' + JSON.stringify(job.payload || {}));
             result = await zoomScanService.runScanCloud(job.payload);
+                } else if (job.type === config.jobTypes.ZOOM_SCAN_TRASH) {
+            if (!zoomScanService) {
+                zoomScanService = new ZoomScanService();
+            }
+            logger.info('Starting Zoom Trash Scan for: ' + JSON.stringify(job.payload || {}));
+            result = await zoomScanService.runScanTrash(job.payload);
         } else if (job.type === config.jobTypes.ZOOM_RESCAN_DRIVE) {
             if (!zoomScanService) {
                 zoomScanService = new ZoomScanService();

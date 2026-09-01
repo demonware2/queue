@@ -29,6 +29,7 @@ const config = {
     ZOOM_SYNC_DRIVE: 'zoom_sync_drive',
     ZOOM_SCAN_CLOUD: 'zoom_scan_cloud',
     ZOOM_RESCAN_DRIVE: 'zoom_rescan_drive',
+    ZOOM_SCAN_TRASH: 'zoom_scan_trash',
     YOUTUBE_UPLOAD: 'youtube_upload',
   },
   workerSettings: {
