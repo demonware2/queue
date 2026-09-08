@@ -16,6 +16,7 @@ const PushNotificationService = require('./services/push-notification-service');
 const BackupService = require('./services/backup-service');
 const GitDeployService = require('./services/git-deploy-service');
 const WebCrawlService = require('./services/web-crawl-service');
+const LiteLlmService = require('./services/lite-llm-service');
 const ZoomDriveService = require('./services/zoom-drive-service');
 const ZoomScanService = require('./services/zoom-scan-service');
 const YouTubeService = require('./services/youtube-service');
@@ -46,6 +47,7 @@ let pushNotificationService = null;
 let backupService = null;
 let gitDeployService = null;
 let webCrawlService = null;
+let liteLlmService = null;
 let zoomDriveService = null;
 let zoomScanService = null;
 let youTubeService = null;
@@ -164,6 +166,10 @@ if (workerType === config.jobTypes.GIT_DEPLOY) {
 
 if (workerType === config.jobTypes.WEB_CRAWL) {
     webCrawlService = new WebCrawlService();
+}
+
+if (workerType === config.jobTypes.LITE_LLM) {
+    liteLlmService = new LiteLlmService();
 }
 
 if (workerType === config.jobTypes.ZOOM_SYNC_DRIVE) {
@@ -340,6 +346,18 @@ async function processJob(job, preclaimed = false) {
             } catch (crawlError) {
                 logger.warn(`Error executing web crawl: ${crawlError.message}`);
                 throw crawlError;
+            }
+        } else if (job.type === config.jobTypes.LITE_LLM && liteLlmService) {
+            logger.info(`Worker ${workerId} running LiteLLM job: ${job.payload.action}`);
+            try {
+                result = await liteLlmService.runJob(job.payload);
+                logger.info(`LiteLLM job completed with exit code: ${result.exitCode}`);
+                if (result.exitCode !== 0) {
+                    throw new Error(`LiteLLM job exited with non-zero code ${result.exitCode}. Error: ${result.error}`);
+                }
+            } catch (liteLlmError) {
+                logger.warn(`Error executing LiteLLM job: ${liteLlmError.message}`);
+                throw liteLlmError;
             }
         } else if (job.type === config.jobTypes.AI_SANDBOX) {
             logger.info(`Worker ${workerId} forwarding job ${job.id} to AI Sandbox...`);
@@ -577,6 +595,14 @@ async function main() {
                 throw new Error('Failed to initialize web crawl service');
             }
             logger.info(`Worker ${workerId}: Web crawl service initialized successfully`);
+        }
+
+        if (workerType === config.jobTypes.LITE_LLM && liteLlmService) {
+            const initialized = await liteLlmService.init();
+            if (!initialized) {
+                throw new Error('Failed to initialize LiteLLM service');
+            }
+            logger.info(`Worker ${workerId}: LiteLLM service initialized successfully`);
         }
 
         logger.info(`Worker ${workerId} (${workerType}) started (BRPOP consumption)`);

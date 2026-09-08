@@ -23,6 +23,7 @@ const config = {
     TELEGRAM: 'telegram',
     PUSH_NOTIFICATION: 'push_notification',
     AI_SANDBOX: 'ai_sandbox',
+    LITE_LLM: 'lite_llm',
     BACKUP: 'backup',
     GIT_DEPLOY: 'git_deploy',
     WEB_CRAWL: 'web_crawl',
