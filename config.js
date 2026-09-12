@@ -32,6 +32,7 @@ const config = {
     ZOOM_RESCAN_DRIVE: 'zoom_rescan_drive',
     ZOOM_SCAN_TRASH: 'zoom_scan_trash',
     YOUTUBE_UPLOAD: 'youtube_upload',
+    GENERAL: 'general',
   },
   workerSettings: {
     defaultCount: 1,

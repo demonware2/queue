@@ -20,6 +20,7 @@ const LiteLlmService = require('./services/lite-llm-service');
 const ZoomDriveService = require('./services/zoom-drive-service');
 const ZoomScanService = require('./services/zoom-scan-service');
 const YouTubeService = require('./services/youtube-service');
+const GeneralService = require('./services/general-service');
 const logger = require('./services/logger');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
@@ -51,6 +52,7 @@ let liteLlmService = null;
 let zoomDriveService = null;
 let zoomScanService = null;
 let youTubeService = null;
+let generalService = null;
 let keepRunning = true;
 
 function safeStringify(value, opts = {}) {
@@ -182,6 +184,10 @@ if (workerType === config.jobTypes.ZOOM_SCAN_CLOUD || workerType === config.jobT
 
 if (workerType === config.jobTypes.YOUTUBE_UPLOAD) {
     youTubeService = new YouTubeService(redis);
+}
+
+if (workerType === config.jobTypes.GENERAL) {
+    generalService = new GeneralService(redis);
 }
 
 const API_ENDPOINTS = {
@@ -358,6 +364,18 @@ async function processJob(job, preclaimed = false) {
             } catch (liteLlmError) {
                 logger.warn(`Error executing LiteLLM job: ${liteLlmError.message}`);
                 throw liteLlmError;
+            }
+        } else if (job.type === config.jobTypes.GENERAL) {
+            if (!generalService) {
+                generalService = new GeneralService(redis);
+            }
+            logger.info(`Starting general command execution for job ${job.id}`);
+            try {
+                result = await generalService.runCommand(job.payload);
+                logger.debug(`General command completed with result: ${safeStringify(result)}`);
+            } catch (cmdError) {
+                logger.warn(`Error running general command: ${cmdError.message}`);
+                throw cmdError;
             }
         } else if (job.type === config.jobTypes.AI_SANDBOX) {
             logger.info(`Worker ${workerId} forwarding job ${job.id} to AI Sandbox...`);
