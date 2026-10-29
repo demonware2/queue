@@ -94,6 +94,23 @@ class WorkerManager {
     return false;
   }
 
+  async restartWorker(id) {
+    const record = this.workers[id];
+    if (!record) {
+      return false;
+    }
+
+    const forceKill = setTimeout(() => record.process.kill('SIGKILL'), 10_000);
+    record.process.once('exit', () => {
+      clearTimeout(forceKill);
+      if (!this.workers[id] && !this.restartTimers[id]) {
+        this.startWorker(id, record.type).catch((e) => console.error(`Failed to restart worker ${id}: ${e.message}`));
+      }
+    });
+    record.process.kill('SIGTERM');
+    return true;
+  }
+
   async scaleWorkers(type, count) {
     const currentWorkers = await this.workerModel.getByType(type);
     

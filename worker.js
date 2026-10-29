@@ -493,7 +493,7 @@ async function brpopLoop() {
                     continue;
                 }
                 try {
-                    const claimResp = await axios.post(`http://localhost:${config.server.port}/api/jobs/${job.id}/claim`);
+                    const claimResp = await axios.post(`http://localhost:${config.server.port}/api/jobs/${job.id}/claim`, { workerId });
                     if (claimResp.data && claimResp.data.claimed) {
                         await processJob(job, true);
                     } else {
@@ -642,6 +642,9 @@ process.on('SIGTERM', async () => {
     if (cronjobService) {
         await cronjobService.shutdown();
     }
+    if (backupService) {
+        backupService.killAll();
+    }
     keepRunning = false;
     if (configSub) {
         await configSub.quit();
@@ -660,6 +663,9 @@ process.on('SIGINT', async () => {
 
     if (cronjobService) {
         await cronjobService.shutdown();
+    }
+    if (backupService) {
+        backupService.killAll();
     }
     keepRunning = false;
     if (configSub) {

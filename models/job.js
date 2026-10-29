@@ -108,17 +108,49 @@ class Job {
         );
     }
 
-    async claimIfPending(id) {
+    async claimIfPending(id, workerId = null) {
         try {
             const result = await this.db.run(
-                `UPDATE jobs SET status = 'processing', updated_at = datetime('now', 'localtime') WHERE id = ? AND status = 'pending'`,
-                [id]
+                `UPDATE jobs SET status = 'processing', worker_id = COALESCE(?, worker_id), updated_at = datetime('now', 'localtime') WHERE id = ? AND status = 'pending'`,
+                [workerId, id]
             );
             return result.changes > 0;
         } catch (error) {
             console.error('Error claiming job if pending:', error);
             throw error;
         }
+    }
+
+    async getProcessing() {
+        return this.db.all(
+            `SELECT id, type, payload, worker_id, attempts, retry_count, is_retry_enabled,
+                    CAST(strftime('%s', updated_at, 'utc') AS INTEGER) AS updated_epoch,
+                    CAST(strftime('%s', 'now') AS INTEGER) - CAST(strftime('%s', updated_at, 'utc') AS INTEGER) AS idle_seconds
+             FROM jobs WHERE status = 'processing'`
+        );
+    }
+
+    async requeueIfProcessing(id, note) {
+        const result = await this.db.run(
+            `UPDATE jobs SET status = 'pending', worker_id = NULL, attempts = attempts + 1, next_attempt_at = NULL,
+                    result = ?, updated_at = datetime('now', 'localtime')
+             WHERE id = ? AND status = 'processing'`,
+            [JSON.stringify({ recovered: note }), id]
+        );
+        return result.changes > 0;
+    }
+
+    async failIfProcessing(id, reason, manageRetry = true) {
+        const job = await this.getById(id);
+        const result = await this.db.run(
+            `UPDATE jobs SET status = 'failed', updated_at = datetime('now', 'localtime') WHERE id = ? AND status = 'processing'`,
+            [id]
+        );
+        if (result.changes === 0) {
+            return false;
+        }
+        await this.updateStatus(id, 'failed', job ? job.worker_id : null, { error: reason }, { manageRetry });
+        return true;
     }
 
     async getStats() {

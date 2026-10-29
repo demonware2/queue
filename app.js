@@ -6,6 +6,7 @@ const Worker = require('./models/worker');
 const QueueService = require('./services/queue');
 const WorkerManager = require('./services/worker-manager');
 const config = require('./config');
+const { scheduleRetry, recoverInterruptedJobs, reapStaleJobs } = require('./services/job-recovery');
 
 async function startServer() {
     const db = await initDatabase();
@@ -15,6 +16,8 @@ async function startServer() {
 
     const queueService = new QueueService();
     await queueService.init();
+
+    await recoverInterruptedJobs(jobModel, queueService);
 
     const workerManager = new WorkerManager(db, workerModel);
     await workerManager.init();
@@ -27,12 +30,7 @@ async function startServer() {
         },
         onJobFailed: async (data) => {
             await jobModel.updateStatus(data.jobId, 'failed', data.workerId, { error: data.error });
-            const job = await jobModel.getById(data.jobId);
-            if (job && job.is_retry_enabled && job.attempts < job.retry_count) {
-                const nextAttemptTimestamp = new Date(job.next_attempt_at).getTime();
-                await queueService.redis.zadd('queue:retries', nextAttemptTimestamp, job.id);
-                await queueService.redis.lpush('queue:retry_signal', '1');
-            }
+            await scheduleRetry(jobModel, queueService, data.jobId);
             await workerModel.updateStatus(data.workerId, 'idle');
             console.log(`Job ${data.jobId} failed on worker ${data.workerId}. Error: ${data.error}`);
         }
@@ -253,7 +251,7 @@ async function startServer() {
     app.post('/api/jobs/:id/claim', async (req, res) => {
         try {
             const { id } = req.params;
-            const claimed = await jobModel.claimIfPending(id);
+            const claimed = await jobModel.claimIfPending(id, req.body?.workerId ?? null);
             res.json({ claimed });
         } catch (error) {
             console.error('Error claiming job:', error);
@@ -398,6 +396,12 @@ async function startServer() {
             console.error('Failed to run database retention cleanup:', cleanupError);
         }
     }, 24 * 60 * 60 * 1000);
+
+    setInterval(() => {
+        reapStaleJobs(jobModel, queueService, workerManager).catch((error) => {
+            console.error('Stale job reaper failed:', error);
+        });
+    }, config.recovery.reaperIntervalMinutes * 60 * 1000);
 
     app.listen(config.server.port, () => {
         console.log(`Server running on port ${config.server.port}`);
