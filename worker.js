@@ -196,6 +196,12 @@ const API_ENDPOINTS = {
 };
 
 async function processJob(job, preclaimed = false) {
+    const recovery = (job.payload && job.payload._recovery) || {};
+    if (job.payload && job.payload._recovery !== undefined) {
+        const { _recovery, ...servicePayload } = job.payload;
+        job.payload = servicePayload;
+    }
+
     logger.debug(`Worker ${workerId} starting to process job ${job.id} of type ${job.type}`);
     logger.debug(`Job payload: ${safeStringify(job.payload)}`);
 
@@ -244,7 +250,7 @@ async function processJob(job, preclaimed = false) {
         } else if (job.type === config.jobTypes.BACKUP && backupService) {
             logger.info(`Starting backup execution for name: ${job.payload.name}`);
             try {
-                result = await backupService.runBackup(job.payload);
+                result = await backupService.runBackup(job.payload, { timeoutHours: recovery.timeoutHours });
 
                 logger.info(`Backup execution completed with exit code: ${result.exitCode}`);
                 if (result.exitCode !== 0) {

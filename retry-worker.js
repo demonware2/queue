@@ -28,7 +28,10 @@ async function processDueJobs() {
                 const job = await jobModel.getById(jobId);
                 if (job) {
                     await redis.zrem('queue:retries', jobId);
-                    await jobModel.updateStatus(jobId, 'pending');
+                    if (!await jobModel.requeueFailedForRetry(jobId)) {
+                        logger.warn(`RetryWorker: Skipped job ${jobId}, status is '${job.status}' instead of 'failed'.`);
+                        return;
+                    }
                     await queueService.addJob(job.id, job.type, JSON.parse(job.payload));
                     console.log(`RetryWorker: Re-queued job ${jobId} (Type: ${job.type})`);
                 } else {

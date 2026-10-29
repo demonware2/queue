@@ -1,7 +1,6 @@
 require('dotenv').config();
 
 const { spawn } = require('child_process');
-const config = require('../config');
 
 class BackupService {
   constructor() {
@@ -13,7 +12,7 @@ class BackupService {
     return true;
   }
 
-  async runBackup(payload) {
+  async runBackup(payload, options = {}) {
     const { name, backup_type, storage = 'local' } = payload;
     const sparkPath = process.env.BACKUP_SPARK_PATH || '/var/www/siroum/spark';
     const commandPrefix = process.env.BACKUP_COMMAND_PREFIX || '';
@@ -54,7 +53,7 @@ class BackupService {
     const jobId = `backup_${name}_${Date.now()}`;
     this.processes[jobId] = childProcess;
 
-    const timeoutHours = config.jobTimeoutsHours.backup;
+    const timeoutHours = options.timeoutHours > 0 ? options.timeoutHours : 0;
     let timedOut = false;
     const timer = timeoutHours > 0 ? setTimeout(() => {
       timedOut = true;

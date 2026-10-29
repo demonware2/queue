@@ -34,14 +34,14 @@ const config = {
     YOUTUBE_UPLOAD: 'youtube_upload',
     GENERAL: 'general',
   },
-  jobTimeoutsHours: {
-    backup: parseFloat(process.env.BACKUP_JOB_TIMEOUT_HOURS) || 6,
-  },
   recovery: {
     requeueMaxAgeHours: 3,
-    neverRequeueTypes: ['git_deploy'],
     orphanGraceMinutes: 5,
     reaperIntervalMinutes: 5,
+  },
+  retry: {
+    maxCount: 10,
+    minDelayMinutes: 1,
   },
   workerSettings: {
     defaultCount: 1,

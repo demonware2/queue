@@ -1,5 +1,29 @@
 const config = require('../config');
 
+const MAX_TIMEOUT_HOURS = 48;
+
+function normalizeRecoveryOptions(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return null;
+    }
+
+    const timeoutHours = Number(raw.timeoutHours);
+
+    return {
+        requeueOnRestart: raw.requeueOnRestart === true,
+        timeoutHours: Number.isFinite(timeoutHours) && timeoutHours > 0 ? Math.min(timeoutHours, MAX_TIMEOUT_HOURS) : 0,
+    };
+}
+
+function recoveryOf(job) {
+    try {
+        const payload = typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload;
+        return (payload && payload._recovery) || {};
+    } catch (e) {
+        return {};
+    }
+}
+
 async function scheduleRetry(jobModel, queueService, jobId) {
     const job = await jobModel.getById(jobId);
     if (job && job.status === 'failed' && job.is_retry_enabled && job.attempts < job.retry_count && job.next_attempt_at) {
@@ -12,7 +36,7 @@ async function recoverInterruptedJobs(jobModel, queueService) {
     const maxAgeSeconds = config.recovery.requeueMaxAgeHours * 3600;
 
     for (const job of await jobModel.getProcessing()) {
-        const canRequeue = !config.recovery.neverRequeueTypes.includes(job.type)
+        const canRequeue = recoveryOf(job).requeueOnRestart === true
             && job.is_retry_enabled
             && job.attempts + 1 < job.retry_count
             && job.idle_seconds <= maxAgeSeconds;
@@ -36,7 +60,7 @@ async function reapStaleJobs(jobModel, queueService, workerManager) {
     for (const job of await jobModel.getProcessing()) {
         const worker = job.worker_id ? workerManager.workers[job.worker_id] : null;
         const workerGone = !worker || Math.floor(worker.startedAt / 1000) > job.updated_epoch + 1;
-        const timeoutHours = config.jobTimeoutsHours[job.type];
+        const timeoutHours = recoveryOf(job).timeoutHours || 0;
         const timedOut = timeoutHours > 0 && job.idle_seconds > timeoutHours * 3600 + graceSeconds;
 
         if (job.idle_seconds <= graceSeconds || (!workerGone && !timedOut)) {
@@ -64,4 +88,4 @@ async function reapStaleJobs(jobModel, queueService, workerManager) {
     }
 }
 
-module.exports = { scheduleRetry, recoverInterruptedJobs, reapStaleJobs };
+module.exports = { normalizeRecoveryOptions, scheduleRetry, recoverInterruptedJobs, reapStaleJobs };

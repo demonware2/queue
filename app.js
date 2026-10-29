@@ -6,7 +6,7 @@ const Worker = require('./models/worker');
 const QueueService = require('./services/queue');
 const WorkerManager = require('./services/worker-manager');
 const config = require('./config');
-const { scheduleRetry, recoverInterruptedJobs, reapStaleJobs } = require('./services/job-recovery');
+const { normalizeRecoveryOptions, scheduleRetry, recoverInterruptedJobs, reapStaleJobs } = require('./services/job-recovery');
 
 async function startServer() {
     const db = await initDatabase();
@@ -148,7 +148,10 @@ async function startServer() {
 
             const resolvedRetryEnabled = normalizedRetryEnabled ?? false;
             const resolvedRetryDelay = normalizedRetryDelay ?? 1;
-            const resolvedRetryCount = normalizedRetryCount ?? 5;
+            const resolvedRetryCount = Math.min(normalizedRetryCount ?? 5, config.retry.maxCount);
+            if ((normalizedRetryCount ?? 0) > config.retry.maxCount) {
+                console.warn(`Job retryCount ${normalizedRetryCount} trimmed to ${config.retry.maxCount}`);
+            }
 
             const retryOptions = {
                 isRetryEnabled: resolvedRetryEnabled,
@@ -191,6 +194,12 @@ async function startServer() {
             }
             if (pruneRetryContainer(jobPayload.retry_options)) {
                 delete jobPayload.retry_options;
+            }
+
+            delete jobPayload._recovery;
+            const recoveryOptions = normalizeRecoveryOptions(req.body.recoveryOptions);
+            if (recoveryOptions) {
+                jobPayload._recovery = recoveryOptions;
             }
 
             const jobId = await jobModel.create(type, jobPayload, retryOptions);

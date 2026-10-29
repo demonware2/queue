@@ -1,3 +1,5 @@
+const config = require('../config');
+
 class Job {
     constructor(db) {
         this.db = db;
@@ -70,7 +72,7 @@ class Job {
             const { manageRetry = true } = options ?? {};
 
             if (manageRetry && job.is_retry_enabled && job.attempts < job.retry_count) {
-                const d = new Date(Date.now() + job.retry_delay * 60 * 60 * 1000);
+                const d = new Date(Date.now() + Math.max(job.retry_delay * 60 * 60 * 1000, config.retry.minDelayMinutes * 60 * 1000));
                 const pad = (n) => String(n).padStart(2, '0');
                 const nextAttemptAt = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
                 await this.db.run(
@@ -151,6 +153,15 @@ class Job {
         }
         await this.updateStatus(id, 'failed', job ? job.worker_id : null, { error: reason }, { manageRetry });
         return true;
+    }
+
+    async requeueFailedForRetry(id) {
+        const result = await this.db.run(
+            `UPDATE jobs SET status = 'pending', worker_id = NULL, result = NULL, updated_at = datetime('now', 'localtime')
+             WHERE id = ? AND status = 'failed'`,
+            [id]
+        );
+        return result.changes > 0;
     }
 
     async getStats() {
